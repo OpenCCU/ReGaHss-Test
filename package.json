@@ -37,7 +37,7 @@
     "request": "^2.88.0",
     "binrpc": "^3.1.0",
     "camo-purge": "latest",
-    "hm-simulator": "0.0.4",
+    "hm-simulator": "0.1.1",
     "homematic-rega": "latest",
     "homematic-xmlrpc": "^1.0.2",
     "indent-string": "^4.0.0",
