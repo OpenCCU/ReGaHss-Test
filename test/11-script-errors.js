@@ -37,7 +37,7 @@ flavors.forEach(function (flavor) {
 dom.MethodDoesNotExist("muh");
                 `, function (error, stdout, objects) {
                     if (error) {
-                        console.error(indent(error, 6));
+                        console.error(error);
                     }
                 });
             });
@@ -56,7 +56,7 @@ dom.MethodDoesNotExist("muh");
 WriteLine(bla");
                 `, function (error, stdout, objects) {
                     if (error) {
-                        console.error(indent(error, 6));
+                        console.error(error);
                     }
                 });
             });
@@ -76,7 +76,7 @@ var unknown = dom.GetObject("doesNotExist");
 WriteLine(unknown.Name());
                 `, function (error, stdout, objects) {
                     if (error) {
-                        console.error(indent(error, 6));
+                        console.error(error);
                     }
                 });
             });
@@ -98,7 +98,7 @@ var b = system.ToFloat("1.4");
 var c = system.ToFloat("a");
                 `, function (error, stdout, objects) {
                     if (error) {
-                        console.error(indent(error, 6));
+                        console.error(error);
                     }
                 });
             });
@@ -120,7 +120,6 @@ WriteLine(infinite);
                 `, function (error, stdout, objects) {
                     if (error) {
                         console.error(error);
-                        console.error(indent(error, 6));
                     }
                 });
             });
