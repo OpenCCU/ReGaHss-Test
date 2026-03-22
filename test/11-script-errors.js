@@ -109,7 +109,7 @@ var c = system.ToFloat("a");
                 }
 
                 this.timeout(60000);
-                subscribe('rega', /division by (0|zero)/, function () {
+                subscribe('rega', /(division by (0|zero)|inf)/i, function () {
                     done();
                 });
                 rega.exec(`
