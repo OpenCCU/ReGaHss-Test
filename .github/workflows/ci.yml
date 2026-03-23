@@ -22,7 +22,7 @@ jobs:
         arch: [X86_32_GCC8, x86_64-linux-gnu]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: install dependencies
       run: |
@@ -37,7 +37,7 @@ jobs:
         sudo timedatectl set-timezone Europe/Berlin
         date
 
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v6
       with:
         node-version: '12.x'
 
