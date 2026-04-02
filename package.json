@@ -40,7 +40,7 @@
     "hm-simulator": "0.0.4",
     "homematic-rega": "latest",
     "homematic-xmlrpc": "^1.0.2",
-    "indent-string": "^4.0.0",
+    "indent-string": "^5.0.0",
     "mocha": "10.2.0",
     "mocha-clean": "latest",
     "should": "latest",
