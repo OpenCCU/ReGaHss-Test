@@ -49,8 +49,8 @@
     "moment": "latest"
   },
   "devDependencies": {
-    "eslint": ">=7.32.0",
-    "xo": "^0.37.1",
+    "eslint": ">=10.2.0",
+    "xo": "^2.0.2",
     "yargs-parser": ">=22.0.0"
   },
   "xo": {
