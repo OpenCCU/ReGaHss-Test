@@ -50,10 +50,30 @@
   },
   "devDependencies": {
     "eslint": ">=7.32.0",
-    "xo": "^0.37.1",
+    "xo": "^2.0.2",
     "yargs-parser": ">=22.0.0"
   },
   "xo": {
-    "space": 4
+    "space": 4,
+    "rules": {
+      "@stylistic/array-bracket-spacing": "off",
+      "@stylistic/comma-dangle": "off",
+      "@stylistic/max-len": "off",
+      "@stylistic/no-multi-spaces": "off",
+      "import-x/newline-after-import": "off",
+      "import-x/no-unassigned-import": "off",
+      "import-x/order": "off",
+      "logical-assignment-operators": "off",
+      "n/prefer-global/buffer": "off",
+      "n/prefer-global/process": "off",
+      "require-unicode-regexp": "off",
+      "unicorn/no-array-for-each": "off",
+      "unicorn/no-array-reverse": "off",
+      "unicorn/no-typeof-undefined": "off",
+      "unicorn/numeric-separators-style": "off",
+      "unicorn/prefer-module": "off",
+      "unicorn/prefer-node-protocol": "off",
+      "unicorn/prefer-string-raw": "off"
+    }
   }
 }
