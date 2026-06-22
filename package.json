@@ -50,7 +50,7 @@
   },
   "devDependencies": {
     "eslint": ">=7.32.0",
-    "xo": "^2.0.2",
+    "xo": "^3.0.2",
     "yargs-parser": ">=22.0.0"
   },
   "xo": {
