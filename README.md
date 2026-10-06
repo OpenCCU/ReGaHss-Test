@@ -1,38 +1,72 @@
 # ReGaHss Testing Environment
-[![CI](https://github.com/jens-maus/occu-test/workflows/CI/badge.svg)](https://github.com/jens-maus/occu-test/actions)
+[![CI](https://github.com/OpenCCU/ReGaHss-Test/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenCCU/ReGaHss-Test/actions/workflows/ci.yml)
 [![XO code style](https://img.shields.io/badge/code_style-XO-5ed9c7.svg)](https://github.com/sindresorhus/xo)
-[![Known Vulnerabilities](https://snyk.io/test/github/jens-maus/occu-test/badge.svg)](https://snyk.io/test/github/jens-maus/occu-test)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-This repository performs automated daily system tests of `ReGaHss` - the HomeMatic (O)CCU "Logic Layer" engine. It uses a [mocha](https://github.com/mochajs/mocha)-based node.js testing framework to test all published `ReGaHss` binaries in the [OCCU](https://github.com/eq-3/occu) environment published by eQ3. Beside testing common corner cases of the embedded scripting language of ReGaHss this testing framework also tests for security vulnerabilities.
+This repository performs automated daily system tests of `ReGaHss` - the HomeMatic CCU "Logic Layer" engine. It uses a [mocha](https://github.com/mochajs/mocha)-based node.js testing framework to test the `ReGaHss` binaries published in [OpenCCU-Base](https://github.com/OpenCCU/OpenCCU-Base), the component base layer of [OpenCCU](https://github.com/OpenCCU/OpenCCU). Beside testing common corner cases of the embedded scripting language of ReGaHss, this testing framework also tests program/timer execution (including DST and leap year boundaries via [libfaketime](https://github.com/wolfcw/libfaketime)), the XML-RPC interface and checks for known security vulnerabilities.
 
-Recent test results for the different build flavors of ReGaHss can be viewed here:
+## How it works
 
-[![](http://github-actions.40ants.com/jens-maus/occu-test/matrix.svg?only=ci.build)](https://github.com/jens-maus/occu-test/actions)
+* The required parts of an OpenCCU-Base revision (`bin/<arch>/ReGaHss`, `lib/<arch>/libXmlRpc.so`, `lib/<arch>/libxmlparser.so` and `www/`) are fetched via a shallow sparse checkout (`scripts/fetch-openccu-base.sh`).
+* ReGaHss and its runtime environment (`rega.conf`, `InterfacesList.xml`, the prebuilt test `homematic.regadom`, dummy hook scripts) are installed into a disposable docker image (`scripts/install-regahss.sh`).
+* Each test file (`test/*.js`) starts its own ReGaHss process (optionally together with the [hm-simulator](https://github.com/hobbyquaker/hm-simulator) rfd simulation or under `faketime`) and interacts with it via the ReGa script interface (port 8183), its XML-RPC/BIN-RPC server (port 31999) and its log output.
 
-## HOWTO run the tests locally
+## Running the tests
+
+### Using docker (recommended)
+
 ```bash
-# Start the travis container
-docker run --name travis -dit quay.io/travisci/travis-ruby /sbin/init
+# build the test image for the current OpenCCU-Base main branch
+docker build -t regahss-test --build-arg REGA_ARCH=x86_64-linux-gnu --build-arg BASE_REF=main .
 
-# Get a shell
-docker start travis
-docker exec -it travis bash -l
+# run the complete test suite (takes ~30 minutes due to the real-time timer tests)
+docker run --rm --init regahss-test
 
-# Install Node.js
-nvm install 10
+# run only specific test files
+docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js test/13-fixed-bugs.js
 
-# Clone the repo
-cd /home/travis
-git clone https://github.com/jens-maus/occu-test
-
-# Install dependencies
-cd occu-test
-npm install
-
-# Run the tests
-npm test
+# show the ReGaHss output while running the tests
+docker run --rm --init -e REGA_OUTPUT=1 regahss-test npx mocha test/01-rega-startup.js
 ```
+
+Build arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `REGA_ARCH` | `x86_64-linux-gnu` | ReGaHss architecture to test (`x86_64-linux-gnu` or `i686-linux-gnu`) |
+| `BASE_REF` | `main` | OpenCCU-Base branch, tag or commit SHA to take ReGaHss from |
+| `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
+
+Images built by the CI for the `master` branch are published as `ghcr.io/openccu/regahss-test:<arch>-<main|release|commit>`.
+
+### Natively (disposable environments only)
+
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, `expect` (for `unbuffer`), `faketime`/`libfaketime` and the timezone `Europe/Berlin`:
+
+```bash
+scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
+sudo scripts/install-regahss.sh /tmp/openccu-base x86_64-linux-gnu
+npm ci
+sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `REGA_BIN` | `/bin/ReGaHss` | ReGaHss binary to test |
+| `REGA_LABEL` | `<arch>@<commit>` | label shown in the test titles |
+| `REGA_OUTPUT` | – | set to `1` to show the ReGaHss output |
+| `SIM_OUTPUT` | – | set to `1` to show the hm-simulator output |
+
+## Continuous integration
+
+The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and nightly. It tests the ReGaHss binaries for `x86_64-linux-gnu` and `i686-linux-gnu` of
+
+* `main` - the current HEAD of OpenCCU-Base and
+* `release` - the OpenCCU-Base revision OpenCCU currently builds its firmware with (`OPENCCU_BASE_VERSION` in [openccu-base.mk](https://github.com/OpenCCU/OpenCCU/blob/master/buildroot-external/package/openccu-base/openccu-base.mk)),
+
+whereas identical revisions are only tested once. A manual run (`workflow_dispatch`) allows to test an additional OpenCCU-Base ref (`base_ref`) and to additionally run the legacy tests against the binaries of the old [OCCU](https://github.com/OpenCCU/occu) repository (`legacy_occu`, see `legacy/`).
 
 ## homematic.regadom
 
@@ -65,28 +99,22 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 * Key16Key17 - on BidCoS-RF:16 PRESS_LONG => BidCoS-RF:17 PRESS_LONG
 * Key1 - on BidCos-RF:1 PRESS_SHORT => BidCoS-RF:2 PRESS_LONG
 
-## Todo
+## Roadmap
 
-* test all examples of the official homematic script documentation **wip**
-* test script error handling **wip**
-* test popular scripts published on homematic-inside.de and homematic-forum.de **wip**
-* extend regadom with more testvars/programs/devices
-* add more devices to rfd and hmipserver simulator and add them to regadom
-* test device interactions (add/delete/readyconfig, test programs, ...) **wip**
-* trigger travis builds on commits in occu repository
-* test variable creation/deletion via script
-* test room/function creation/deletion via script
-* test room/function assignment creation/deletion
-* test program creation via script
-* WebUI tests?
-* ...
+* **Phase 0/1** (done): pinned dependencies, node.js 22, docker based test environment, switch from OCCU to OpenCCU-Base
+* **Phase 2**: build `libXmlRpc`/`libxmlparser` from OpenCCU-Base sources and test ReGaHss against them (incl. ASan/UBSan builds, ABI checks via `abidiff`, gcov coverage), trigger tests from OpenCCU-Base pull requests
+* **Phase 3**: test harness rework (crash detection, per-instance environments, parallel execution, accelerated faketime timer tests, JUnit reports, log artifacts)
+* **Phase 4**: broader test coverage (data driven script test corpus, differential tests against previous releases, object model/persistence tests, extended rfd/HmIP/VirtualDevices simulator)
+* **Phase 5**: aarch64/armhf via QEMU, Y2038 tests on 32-bit platforms, XML-RPC/HTTP fuzzing, long-running stability tests
 
 ## Links
 
-* [OCCU](https://github.com/eq-3/occu)
+* [OpenCCU](https://github.com/OpenCCU/OpenCCU)
+* [OpenCCU-Base](https://github.com/OpenCCU/OpenCCU-Base)
+* [OCCU](https://github.com/OpenCCU/occu) (legacy)
 * [hm-simulator](https://github.com/hobbyquaker/hm-simulator) (simulates rfd/hmipserver)
-* [ccu x86 docker image](https://hub.docker.com/r/litti/ccu2/) (used for creation of the prebuilt homematic.regadom)
 * [homematic-rega](https://github.com/hobbyquaker/homematic-rega) (Node.js Homematic CCU ReGaHSS Remote Script Interface)
+* [ccu x86 docker image](https://hub.docker.com/r/litti/ccu2/) (used for creation of the prebuilt homematic.regadom)
 
 ## Contributing
 
@@ -94,4 +122,4 @@ Help and Feedback highly appreciated, Pull Requests Welcome! :-)
 
 ## License
 
-MIT (c) 2017-2020 [Jens Maus](https://github.com/jens-maus), [Sebastian Raff](https://github.com/hobbyquaker)
+MIT (c) 2017-2026 [Jens Maus](https://github.com/jens-maus), [Sebastian Raff](https://github.com/hobbyquaker)
