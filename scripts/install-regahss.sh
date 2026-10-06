@@ -6,15 +6,22 @@
 # run as root and is meant for disposable environments (docker container,
 # CI runner) only, as it writes to /bin, /etc, /www and /usr/local/lib.
 #
-# Usage: install-regahss.sh <openccu-base-dir> [arch]
+# Usage: install-regahss.sh <openccu-base-dir> [arch] [libs-dir]
+#
+#   [libs-dir]  directory with libXmlRpc.so/libxmlparser.so built from source
+#               (see build-libs.sh) to be used instead of the prebuilt
+#               libraries of OpenCCU-Base
 #
 set -euo pipefail
 
-BASE_DIR=${1:?usage: $0 <openccu-base-dir> [arch]}
+BASE_DIR=${1:?usage: $0 <openccu-base-dir> [arch] [libs-dir]}
 ARCH=${2:-x86_64-linux-gnu}
+LIBS_DIR=${3:-}
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 LIB_DIR=/usr/local/lib/regahss
 REGA_BIN=/bin/ReGaHss
+ABI_REPORT=/etc/regahss-abi-report.txt
+LIBS=(libXmlRpc.so libxmlparser.so)
 
 error() {
   echo "::error::$*" >&2
@@ -22,17 +29,28 @@ error() {
 }
 
 [[ -f ${BASE_DIR}/bin/${ARCH}/ReGaHss ]] || error "ReGaHss binary for ${ARCH} missing in ${BASE_DIR}"
-for lib in libXmlRpc.so libxmlparser.so; do
+for lib in "${LIBS[@]}"; do
   [[ -f ${BASE_DIR}/lib/${ARCH}/${lib} ]] || error "${lib} for ${ARCH} missing in ${BASE_DIR}"
+  [[ -z ${LIBS_DIR} || -f ${LIBS_DIR}/${lib} ]] || error "${lib} missing in ${LIBS_DIR}"
 done
 [[ -d ${BASE_DIR}/www/rega ]] || error "WebUI files (www/rega) missing in ${BASE_DIR}"
 
+if [[ -n ${LIBS_DIR} ]]; then
+  libs_variant=$(cat "${LIBS_DIR}/../variant" 2>/dev/null || echo source)
+  libs_src=${LIBS_DIR}
+else
+  libs_variant=prebuilt
+  libs_src=${BASE_DIR}/lib/${ARCH}
+fi
+
 umask 022
 
-echo "STEP: installing ReGaHss (${ARCH})"
+echo "STEP: installing ReGaHss (${ARCH}) with ${libs_variant} libraries"
 install -D -m 0755 "${BASE_DIR}/bin/${ARCH}/ReGaHss" "${REGA_BIN}"
 install -d "${LIB_DIR}"
-install -m 0644 "${BASE_DIR}/lib/${ARCH}/libXmlRpc.so" "${BASE_DIR}/lib/${ARCH}/libxmlparser.so" "${LIB_DIR}/"
+for lib in "${LIBS[@]}"; do
+  install -m 0644 "${libs_src}/${lib}" "${LIB_DIR}/"
+done
 echo "${LIB_DIR}" >/etc/ld.so.conf.d/regahss.conf
 ldconfig
 
@@ -57,14 +75,40 @@ ldd "${REGA_BIN}"
 if ldd "${REGA_BIN}" | grep -q 'not found'; then
   error "unresolved runtime dependencies of ${REGA_BIN}"
 fi
+# all symbols ReGaHss imports must be provided by the (rebuilt) libraries
+undefined=$(ldd -r "${REGA_BIN}" 2>&1 | grep 'undefined symbol' || true)
+if [[ -n ${undefined} ]]; then
+  echo "${undefined}" >&2
+  error "${REGA_BIN} has undefined symbols with the ${libs_variant} libraries"
+fi
 
-version=$(timeout 30 "${REGA_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || true)
+# (sanitizer instrumented libraries require the ASan runtime to be preloaded,
+# which is not needed for just printing the version)
+version=$(ASAN_OPTIONS=verify_asan_link_order=0:detect_leaks=0 timeout 30 "${REGA_BIN}" -h 2>&1 |
+  grep -m1 -o 'ReGaHss R[0-9.]*.*' || true)
 [[ -n ${version} ]] || error "${REGA_BIN} -h did not output any version information"
+
+# informational ABI comparison of the release build vs. the prebuilt libraries
+rm -f "${ABI_REPORT}"
+if [[ ${libs_variant} == source ]] && command -v abidiff >/dev/null; then
+  echo "STEP: comparing ABI of ${libs_variant} vs. prebuilt libraries"
+  for lib in "${LIBS[@]}"; do
+    rc=0
+    report=$(abidiff --no-show-locs "${BASE_DIR}/lib/${ARCH}/${lib}" "${libs_src}/${lib}" 2>&1) || rc=$?
+    {
+      echo "### ${lib} (abidiff exit code ${rc})"
+      echo
+      echo "${report:-no ABI changes}"
+      echo
+    } | tee -a "${ABI_REPORT}"
+  done
+fi
 
 commit=$(cat "${BASE_DIR}/.openccu-base-commit" 2>/dev/null || echo unknown)
 cat >/etc/regahss-test.info <<EOF
 REGA_ARCH=${ARCH}
+REGA_LIBS=${libs_variant}
 REGA_VERSION="${version}"
 OPENCCU_BASE_COMMIT=${commit}
 EOF
-echo "installed ${version} from OpenCCU-Base ${commit} (${ARCH})"
+echo "installed ${version} from OpenCCU-Base ${commit} (${ARCH}, ${libs_variant} libraries)"

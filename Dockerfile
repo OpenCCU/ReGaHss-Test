@@ -6,14 +6,20 @@
 #
 #   docker build -t regahss-test \
 #     --build-arg BASE_REF=main \
-#     --build-arg REGA_ARCH=x86_64-linux-gnu .
-#   docker run --rm --init regahss-test                    # complete test suite
+#     --build-arg REGA_ARCH=x86_64-linux-gnu \
+#     --build-arg REGA_LIBS=prebuilt .
+#   docker run --rm --init -v "$PWD/results:/results" regahss-test
 #   docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js
 #
 # Build arguments:
 #   BASE_REPO  OpenCCU-Base git repository
 #   BASE_REF   OpenCCU-Base branch, tag or commit SHA to test (default: main)
 #   REGA_ARCH  x86_64-linux-gnu or i686-linux-gnu
+#   REGA_LIBS  libXmlRpc/libxmlparser to run ReGaHss with:
+#              prebuilt  prebuilt libraries of OpenCCU-Base (default)
+#              source    built from the OpenCCU-Base sources
+#              asan      built from source with ASan/UBSan and gcov coverage
+#                        (x86_64-linux-gnu only)
 
 # fetch the required parts of OpenCCU-Base
 FROM node:22-bookworm-slim AS openccu-base
@@ -25,6 +31,25 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY scripts/fetch-openccu-base.sh /usr/local/bin/
 RUN fetch-openccu-base.sh "${BASE_REPO}" "${BASE_REF}" "${REGA_ARCH}" /openccu-base
+
+# build libXmlRpc/libxmlparser from the OpenCCU-Base sources (if requested)
+FROM node:22-bookworm-slim AS libs
+ARG REGA_ARCH=x86_64-linux-gnu
+ARG REGA_LIBS=prebuilt
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY --from=openccu-base /openccu-base /opt/openccu-base
+COPY scripts/build-libs.sh /usr/local/bin/
+RUN mkdir -p /opt/regahss-libs \
+ && if [ "${REGA_LIBS}" = "prebuilt" ]; then exit 0; fi \
+ && if [ "${REGA_LIBS}" = "asan" ] && [ "${REGA_ARCH}" != "x86_64-linux-gnu" ]; then \
+      echo "REGA_LIBS=asan is only supported for x86_64-linux-gnu" >&2; exit 1; \
+    fi \
+ && packages=(cmake make g++) \
+ && if [ "${REGA_ARCH}" = "i686-linux-gnu" ]; then packages+=(g++-i686-linux-gnu libc6-dev-i386-cross); fi \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends "${packages[@]}" \
+ && rm -rf /var/lib/apt/lists/* \
+ && build-libs.sh /opt/openccu-base "${REGA_ARCH}" "${REGA_LIBS}" /opt/regahss-libs
 
 # build libfaketime from source: the 32-bit ReGaHss uses the glibc time64 ABI
 # (__clock_gettime64 & co.) which is only supported since libfaketime 0.9.13
@@ -44,6 +69,7 @@ RUN packages=(ca-certificates git make gcc libc6-dev) \
 # test environment
 FROM node:22-bookworm-slim
 ARG REGA_ARCH=x86_64-linux-gnu
+ARG REGA_LIBS=prebuilt
 LABEL org.opencontainers.image.source="https://github.com/OpenCCU/ReGaHss-Test" \
       org.opencontainers.image.description="ReGaHss test environment based on OpenCCU-Base" \
       org.opencontainers.image.licenses="MIT"
@@ -59,6 +85,12 @@ RUN packages=(ca-certificates expect procps tzdata) \
         && packages+=(libc6:i386 libstdc++6:i386 libgcc-s1:i386) ;; \
       *) echo "unsupported REGA_ARCH ${REGA_ARCH}" >&2; exit 1 ;; \
     esac \
+ && case "${REGA_LIBS}" in \
+      prebuilt) ;; \
+      source) packages+=(abigail-tools) ;; \
+      asan) packages+=(libasan8 libubsan1 gcc gcovr) ;; \
+      *) echo "unsupported REGA_LIBS ${REGA_LIBS}" >&2; exit 1 ;; \
+    esac \
  && apt-get update \
  && apt-get install -y --no-install-recommends "${packages[@]}" \
  && rm -rf /var/lib/apt/lists/* \
@@ -73,8 +105,11 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY --from=openccu-base /openccu-base /opt/openccu-base
+COPY --from=libs /opt/regahss-libs /opt/regahss-libs
 COPY . .
-RUN scripts/install-regahss.sh /opt/openccu-base "${REGA_ARCH}"
+RUN libs=() \
+ && if [ "${REGA_LIBS}" != "prebuilt" ]; then libs=(/opt/regahss-libs/lib); fi \
+ && scripts/install-regahss.sh /opt/openccu-base "${REGA_ARCH}" "${libs[@]}"
 
 ENTRYPOINT ["/opt/regahss-test/scripts/docker-entrypoint.sh"]
 CMD ["npm", "run", "test:mocha"]

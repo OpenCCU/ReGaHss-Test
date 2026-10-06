@@ -1,8 +1,9 @@
 #!/bin/bash
 #
 # Fetches only those parts of an OpenCCU-Base revision which are required
-# to run ReGaHss (binary, runtime libraries and WebUI files) via a shallow
-# sparse checkout.
+# to run ReGaHss (binary, runtime libraries and WebUI files) and to rebuild
+# its runtime libraries (CMake build system and library sources) via a
+# shallow sparse checkout.
 #
 # Usage: fetch-openccu-base.sh <repo-url> <ref> <arch> <destdir>
 #
@@ -28,7 +29,10 @@ git -C "${DEST}" sparse-checkout set --no-cone \
   "/bin/${ARCH}/ReGaHss" \
   "/lib/${ARCH}/libXmlRpc.so" \
   "/lib/${ARCH}/libxmlparser.so" \
-  "/www/"
+  "/www/" \
+  "/CMakeLists.txt" \
+  "/cmake/" \
+  "/src/lib*/"
 git -C "${DEST}" fetch -q --depth 1 --filter=blob:none origin "${REF}"
 git -C "${DEST}" -c advice.detachedHead=false checkout -q FETCH_HEAD
 
@@ -36,7 +40,8 @@ commit=$(git -C "${DEST}" rev-parse HEAD)
 echo "${commit}" >"${DEST}/.openccu-base-commit"
 rm -rf "${DEST:?}/.git"
 
-for f in "bin/${ARCH}/ReGaHss" "lib/${ARCH}/libXmlRpc.so" "lib/${ARCH}/libxmlparser.so" "www/rega"; do
+for f in "bin/${ARCH}/ReGaHss" "lib/${ARCH}/libXmlRpc.so" "lib/${ARCH}/libxmlparser.so" "www/rega" \
+  "CMakeLists.txt" "src/libXmlRpc/CMakeLists.txt" "src/libxmlparser/CMakeLists.txt"; do
   if [[ ! -e ${DEST}/${f} ]]; then
     echo "ERROR: ${f} missing in OpenCCU-Base ${REF} (${commit})" >&2
     exit 1
