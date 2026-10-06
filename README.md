@@ -41,7 +41,7 @@ Images built by the CI for the `master` branch are published as `ghcr.io/openccu
 
 ### Natively (disposable environments only)
 
-`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, `expect` (for `unbuffer`), `faketime`/`libfaketime` and the timezone `Europe/Berlin`:
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, `expect` (for `unbuffer`), [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI) and the timezone `Europe/Berlin`:
 
 ```bash
 scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
