@@ -58,7 +58,7 @@ if ldd "${REGA_BIN}" | grep -q 'not found'; then
   error "unresolved runtime dependencies of ${REGA_BIN}"
 fi
 
-version=$("${REGA_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || true)
+version=$(timeout 30 "${REGA_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || true)
 [[ -n ${version} ]] || error "${REGA_BIN} -h did not output any version information"
 
 commit=$(cat "${BASE_DIR}/.openccu-base-commit" 2>/dev/null || echo unknown)
