@@ -1,5 +1,5 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, import-x/no-unassigned-import, camelcase, max-nested-callbacks, prefer-arrow-callback, capitalized-comments */
+/* eslint-disable no-unused-vars, camelcase, prefer-arrow-callback, capitalized-comments */
 
 const {
     cp,
@@ -10,7 +10,7 @@ const {
     simBuffer,
     regaSubscriptions,
     regaBuffer,
-    flavors,
+    regaLabel,
     indent,
     initTest,
     cleanupTest
@@ -18,19 +18,18 @@ const {
 
 require('should');
 
-flavors.forEach(function (flavor) {
-    describe('Running ' + __filename.split('/').reverse()[0] + ' [' + flavor + ']', function () {
-        // initialize test environment
-        initTest(flavor, false, '2017-12-01 12:00:00 CET');
+describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
+    // initialize test environment
+    initTest(false, '2017-12-01 12:00:00 CET');
 
-        describe('running examples from https://www.homematic-inside.de/tecbase/homematic/scriptlibrary', function () {
-            it('testing "tageszeit-in-abschnitte-unterteilen"', function (done) {
-                if (!procs.rega) {
-                    return this.skip();
-                }
+    describe('running examples from https://www.homematic-inside.de/tecbase/homematic/scriptlibrary', function () {
+        it('testing "tageszeit-in-abschnitte-unterteilen"', function (done) {
+            if (!procs.rega) {
+                return this.skip();
+            }
 
-                this.timeout(30000);
-                rega.exec(`
+            this.timeout(30000);
+            rega.exec(`
 ! Tageszeiten
 ! Tagesbeginn - 2 Nacht
 ! Tagesbeginn - 2 Tagesbeginn - 1 frühmorgens
@@ -83,23 +82,22 @@ if (c_zeit < c_tagesbeginn - 2) {
 
 ! dom.GetObject("Tageszeit").State(v_tageszeit);
                 `, function (error, output, objects) {
-                    if (error) {
-                        done(error);
-                    } else {
-                        objects.should.containEql({
-                            c_zeit: '12.000000',
-                            c_tagesbeginn: '7.560000',
-                            c_tagesende: '15.560000',
-                            c_mittag: '13.000000',
-                            v_tageszeit: '4'
-                        });
-                        done();
-                    }
-                });
+                if (error) {
+                    done(error);
+                } else {
+                    objects.should.containEql({
+                        c_zeit: '12.000000',
+                        c_tagesbeginn: '7.560000',
+                        c_tagesende: '15.560000',
+                        c_mittag: '13.000000',
+                        v_tageszeit: '4'
+                    });
+                    done();
+                }
             });
         });
-
-        // cleanup test environment
-        cleanupTest(flavor);
     });
+
+    // cleanup test environment
+    cleanupTest();
 });
