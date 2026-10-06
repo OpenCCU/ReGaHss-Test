@@ -6,3 +6,15 @@ updates:
     interval: weekly
   open-pull-requests-limit: 10
   versioning-strategy: increase
+  ignore:
+    # homematic-rega >= 2.0 is ESM-only and incompatible with lib/helper.js
+    - dependency-name: homematic-rega
+      update-types: ["version-update:semver-major"]
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: weekly
+- package-ecosystem: docker
+  directory: "/"
+  schedule:
+    interval: weekly
