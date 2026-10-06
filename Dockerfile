@@ -70,6 +70,7 @@ RUN packages=(ca-certificates git make gcc libc6-dev) \
 FROM node:22-bookworm-slim
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG REGA_LIBS=prebuilt
+ARG GCOVR_VERSION=8.6
 LABEL org.opencontainers.image.source="https://github.com/OpenCCU/ReGaHss-Test" \
       org.opencontainers.image.description="ReGaHss test environment based on OpenCCU-Base" \
       org.opencontainers.image.licenses="MIT"
@@ -88,14 +89,19 @@ RUN packages=(ca-certificates expect procps tzdata) \
  && case "${REGA_LIBS}" in \
       prebuilt) ;; \
       source) packages+=(abigail-tools) ;; \
-      asan) packages+=(libasan8 libubsan1 gcc gcovr) ;; \
+      asan) packages+=(libasan8 libubsan1 gcc python3-venv) ;; \
       *) echo "unsupported REGA_LIBS ${REGA_LIBS}" >&2; exit 1 ;; \
     esac \
  && apt-get update \
  && apt-get install -y --no-install-recommends "${packages[@]}" \
  && rm -rf /var/lib/apt/lists/* \
  && ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime \
- && echo "${TZ}" >/etc/timezone
+ && echo "${TZ}" >/etc/timezone \
+ && if [ "${REGA_LIBS}" = "asan" ]; then \
+      python3 -m venv /opt/gcovr \
+      && /opt/gcovr/bin/pip install --no-cache-dir "gcovr==${GCOVR_VERSION}" \
+      && ln -s /opt/gcovr/bin/gcovr /usr/local/bin/gcovr; \
+    fi
 
 COPY --from=libfaketime /usr/local/bin/faketime /usr/local/bin/faketime
 COPY --from=libfaketime /usr/local/lib/faketime /usr/local/lib/faketime

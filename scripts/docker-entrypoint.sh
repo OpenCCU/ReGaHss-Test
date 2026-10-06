@@ -122,9 +122,11 @@ if [[ ${REGA_LIBS} == asan ]]; then
   if command -v gcovr >/dev/null; then
     mkdir -p "${RESULTS}/coverage"
     search_paths=("${LIBS_BUILD_DIR}/src/libXmlRpc" "${LIBS_BUILD_DIR}/src/libxmlparser")
-    gcovr --root "${BASE_DIR}" "${search_paths[@]}" >"${RESULTS}/coverage/coverage.txt" 2>"${RESULTS}/coverage/gcovr.log"
-    gcovr --root "${BASE_DIR}" "${search_paths[@]}" --json-summary "${RESULTS}/coverage/summary.json" 2>>"${RESULTS}/coverage/gcovr.log"
-    gcovr --root "${BASE_DIR}" "${search_paths[@]}" --html-details "${RESULTS}/coverage/index.html" 2>>"${RESULTS}/coverage/gcovr.log"
+    gcovr --root "${BASE_DIR}" "${search_paths[@]}" \
+      --txt "${RESULTS}/coverage/coverage.txt" \
+      --json-summary "${RESULTS}/coverage/summary.json" \
+      --html-details "${RESULTS}/coverage/index.html" \
+      >"${RESULTS}/coverage/gcovr.log" 2>&1
     {
       echo "### Coverage of libXmlRpc/libxmlparser"
       echo
