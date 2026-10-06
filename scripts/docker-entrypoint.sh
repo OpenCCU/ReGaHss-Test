@@ -122,11 +122,14 @@ if [[ ${REGA_LIBS} == asan ]]; then
   if command -v gcovr >/dev/null; then
     mkdir -p "${RESULTS}/coverage"
     search_paths=("${LIBS_BUILD_DIR}/src/libXmlRpc" "${LIBS_BUILD_DIR}/src/libxmlparser")
-    gcovr --root "${BASE_DIR}" "${search_paths[@]}" \
+    if ! gcovr --root "${BASE_DIR}" "${search_paths[@]}" \
       --txt "${RESULTS}/coverage/coverage.txt" \
       --json-summary "${RESULTS}/coverage/summary.json" \
       --html-details "${RESULTS}/coverage/index.html" \
-      >"${RESULTS}/coverage/gcovr.log" 2>&1
+      >"${RESULTS}/coverage/gcovr.log" 2>&1; then
+      echo "ERROR: gcovr failed:" >&2
+      tail -n 40 "${RESULTS}/coverage/gcovr.log" >&2
+    fi
     {
       echo "### Coverage of libXmlRpc/libxmlparser"
       echo
@@ -151,6 +154,8 @@ if [[ -d ${REGA_LOG_DIR} ]]; then
   tar -C "$(dirname "${REGA_LOG_DIR}")" -czf "${REGA_LOG_DIR}.tar.gz" "$(basename "${REGA_LOG_DIR}")" && rm -rf "${REGA_LOG_DIR}"
 fi
 
+echo
+cat "${summary}"
 echo
 echo "results written to ${RESULTS}"
 exit "${rc}"
