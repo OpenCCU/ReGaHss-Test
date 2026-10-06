@@ -122,7 +122,11 @@ if [[ ${REGA_LIBS} == asan ]]; then
   if command -v gcovr >/dev/null; then
     mkdir -p "${RESULTS}/coverage"
     search_paths=("${LIBS_BUILD_DIR}/src/libXmlRpc" "${LIBS_BUILD_DIR}/src/libxmlparser")
+    # (system headers referenced by the gcov data are not installed)
     if ! gcovr --root "${BASE_DIR}" "${search_paths[@]}" \
+      --filter "${BASE_DIR}/src/" \
+      --gcov-ignore-errors=source_not_found \
+      --gcov-ignore-errors=no_working_dir_found \
       --txt "${RESULTS}/coverage/coverage.txt" \
       --json-summary "${RESULTS}/coverage/summary.json" \
       --html-details "${RESULTS}/coverage/index.html" \
