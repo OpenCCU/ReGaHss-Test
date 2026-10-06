@@ -52,10 +52,16 @@ jobs:
       - name: lint shell scripts
         run: shellcheck scripts/*.sh legacy/*.sh
 
+      - name: lint workflows
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
   resolve:
     runs-on: ubuntu-24.04
     outputs:
-      refs: ${{ steps.resolve.outputs.refs }}
+      tests: ${{ steps.matrix.outputs.tests }}
+      images: ${{ steps.matrix.outputs.images }}
     steps:
       - uses: actions/checkout@v6
 
@@ -65,11 +71,48 @@ jobs:
           EXTRA_REF: ${{ inputs.base_ref }}
         run: scripts/resolve-base-refs.sh "${EXTRA_REF}"
 
+      - name: build test matrix
+        id: matrix
+        env:
+          REFS: ${{ steps.resolve.outputs.refs }}
+          # architectures and library variants to test for each revision
+          VARIANTS: >-
+            [
+              {"arch": "x86_64-linux-gnu", "libs": "prebuilt"},
+              {"arch": "x86_64-linux-gnu", "libs": "source"},
+              {"arch": "x86_64-linux-gnu", "libs": "asan"},
+              {"arch": "i686-linux-gnu", "libs": "prebuilt"},
+              {"arch": "i686-linux-gnu", "libs": "source"}
+            ]
+        run: |
+          tests=$(jq -c --argjson variants "${VARIANTS}" \
+            '[.[] as $base | $variants[] | . + {base_name: $base.name, base_sha: $base.sha}]' <<<"${REFS}")
+          images=$(jq -c --argjson variants "${VARIANTS}" \
+            '[.[] as $base | $variants[] | select(.libs == "prebuilt") | . + {base_name: $base.name, base_sha: $base.sha}]' <<<"${REFS}")
+          echo "tests=${tests}" >>"${GITHUB_OUTPUT}"
+          echo "images=${images}" >>"${GITHUB_OUTPUT}"
+          jq . <<<"${tests}"
+
   test:
-    name: test (${{ matrix.arch }}, ${{ matrix.base.name }})
+    name: test (${{ matrix.arch }}, ${{ matrix.libs }}, ${{ matrix.base_name }})
     needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.tests) }}
+    uses: ./.github/workflows/regahss-test.yml
+    with:
+      base_ref: ${{ matrix.base_sha }}
+      base_name: ${{ matrix.base_name }}
+      arch: ${{ matrix.arch }}
+      libs: ${{ matrix.libs }}
+      debug: ${{ inputs.debug == true }}
+
+  publish:
+    name: publish (${{ matrix.arch }}, ${{ matrix.base_name }})
+    needs: [resolve, test]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'OpenCCU/ReGaHss-Test'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
@@ -77,54 +120,45 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64-linux-gnu, i686-linux-gnu]
-        base: ${{ fromJSON(needs.resolve.outputs.refs) }}
+        include: ${{ fromJSON(needs.resolve.outputs.images) }}
 
     steps:
       - uses: actions/checkout@v6
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: build test image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          load: true
-          tags: regahss-test:ci
-          build-args: |
-            BASE_REF=${{ matrix.base.sha }}
-            REGA_ARCH=${{ matrix.arch }}
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
-
-      - name: run ReGaHss tests
-        env:
-          REGA_LABEL: ${{ matrix.arch }}@${{ matrix.base.name }}
-        run: docker run --rm --init -e REGA_LABEL regahss-test:ci
-
-      - name: remote debug tmate session
-        uses: mxschmitt/action-tmate@v3
-        if: ${{ !cancelled() && inputs.debug }}
-
       - name: login to GitHub container registry
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'OpenCCU/ReGaHss-Test'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: publish test image
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && github.repository == 'OpenCCU/ReGaHss-Test'
+      - name: image tags
+        id: tags
         env:
           ARCH: ${{ matrix.arch }}
-          BASE_NAME: ${{ matrix.base.name }}
-          BASE_SHA: ${{ matrix.base.sha }}
+          BASE_NAME: ${{ matrix.base_name }}
+          BASE_SHA: ${{ matrix.base_sha }}
         run: |
-          for tag in "${ARCH}-${BASE_SHA:0:7}" $(tr '+' '\n' <<<"${BASE_NAME}" | sed "s/^/${ARCH}-/"); do
-            docker tag regahss-test:ci "${IMAGE_NAME}:${tag}"
-            docker push "${IMAGE_NAME}:${tag}"
-          done
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE_NAME}:${ARCH}-${BASE_SHA:0:7}"
+            tr '+' '\n' <<<"${BASE_NAME}" | sed "s|^|${IMAGE_NAME}:${ARCH}-|"
+            echo "EOF"
+          } >>"${GITHUB_OUTPUT}"
+
+      - name: publish test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            BASE_REF=${{ matrix.base_sha }}
+            REGA_ARCH=${{ matrix.arch }}
+            REGA_LIBS=prebuilt
+          cache-from: type=gha,scope=${{ matrix.arch }}-prebuilt
 
   legacy-occu:
     name: legacy-occu (${{ matrix.flavor }}, X86_32_GCC8)
