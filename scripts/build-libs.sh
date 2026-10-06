@@ -51,7 +51,8 @@ case "${VARIANT}" in
     cmake_args+=(-DCMAKE_BUILD_TYPE=Release)
     ;;
   asan)
-    flags="-fsanitize=address,undefined -fno-omit-frame-pointer --coverage"
+    # atomic profile counters as ReGaHss calls the libraries from several threads
+    flags="-fsanitize=address,undefined -fno-omit-frame-pointer --coverage -fprofile-update=atomic"
     cmake_args+=(
       -DCMAKE_BUILD_TYPE=RelWithDebInfo
       -DCMAKE_CXX_FLAGS="${flags}"

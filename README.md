@@ -45,7 +45,9 @@ Build arguments:
 | `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
 | `REGA_LIBS` | `prebuilt` | `libXmlRpc`/`libxmlparser` to run ReGaHss with: `prebuilt` (shipped with OpenCCU-Base), `source` (release build from the OpenCCU-Base sources, incl. informational `abidiff` report vs. the prebuilt libraries) or `asan` (debug build with ASan/UBSan and gcov coverage, `x86_64-linux-gnu` only) |
 
-For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data.
+For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup, the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
+
+The output of every ReGaHss instance started by the tests is kept in `results/logs.tar.gz`.
 
 Images built by the CI for the `master` branch (prebuilt libraries) are published as `ghcr.io/openccu/regahss-test:<arch>-<main|release|commit>`.
 
@@ -70,7 +72,9 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_BIN` | `/bin/ReGaHss` | ReGaHss binary to test |
 | `REGA_LABEL` | `<arch>@<commit>/<libs>` | label shown in the test titles |
 | `REGA_PRELOAD` | – | libraries to preload into the ReGaHss process only (set automatically for `asan`) |
-| `REGA_RESULTS_DIR` | `/results` | directory for the summary, sanitizer reports and coverage (docker image) |
+| `REGA_STOP_SIGNAL` | `KILL` | signal to stop ReGaHss with after each test file (`TERM` for `asan`) |
+| `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
+| `REGA_RESULTS_DIR` | `/results` | directory for the summary, ReGaHss logs, sanitizer reports and coverage (docker image) |
 | `REGA_OUTPUT` | – | set to `1` to show the ReGaHss output |
 | `SIM_OUTPUT` | – | set to `1` to show the hm-simulator output |
 

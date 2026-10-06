@@ -22,6 +22,10 @@ export REGA_LABEL=${REGA_LABEL:-${REGA_ARCH:-unknown}@${OPENCCU_BASE_COMMIT:0:7}
 mkdir -p "${RESULTS}"
 summary=${RESULTS}/summary.md
 
+# keep the output of each ReGaHss instance
+export REGA_LOG_DIR=${REGA_LOG_DIR:-${RESULTS}/logs}
+rm -rf "${REGA_LOG_DIR}"
+
 if [[ ${REGA_LIBS} == asan ]]; then
   sanitizer_dir=${RESULTS}/sanitizer
   rm -rf "${sanitizer_dir}"
@@ -36,6 +40,8 @@ if [[ ${REGA_LIBS} == asan ]]; then
   export REGA_PRELOAD=${asan_lib}:${ubsan_lib}
   export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0:print_summary=1:log_path=${sanitizer_dir}/asan}
   export UBSAN_OPTIONS=${UBSAN_OPTIONS:-print_stacktrace=1:print_summary=1:log_path=${sanitizer_dir}/ubsan}
+  # graceful shutdown to let ReGaHss write the gcov coverage data
+  export REGA_STOP_SIGNAL=${REGA_STOP_SIGNAL:-TERM}
   # remove coverage data of previous runs
   find "${LIBS_BUILD_DIR}" -name '*.gcda' -delete 2>/dev/null
 fi
@@ -63,6 +69,10 @@ rc=$?
   echo
   if [[ ${rc} -eq 0 ]]; then
     echo "passed"
+    if [[ ${REGA_LIBS} == asan ]]; then
+      echo
+      echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
+    fi
   else
     echo "**FAILED** (exit code ${rc})"
   fi
@@ -122,6 +132,21 @@ if [[ ${REGA_LIBS} == asan ]]; then
       echo
     } >>"${summary}"
   fi
+fi
+
+{
+  echo "### Result"
+  echo
+  if [[ ${rc} -eq 0 ]]; then
+    echo "✅ passed"
+  else
+    echo "❌ failed"
+  fi
+} >>"${summary}"
+
+# compress the ReGaHss logs
+if [[ -d ${REGA_LOG_DIR} ]]; then
+  tar -C "$(dirname "${REGA_LOG_DIR}")" -czf "${REGA_LOG_DIR}.tar.gz" "$(basename "${REGA_LOG_DIR}")" && rm -rf "${REGA_LOG_DIR}"
 fi
 
 echo
