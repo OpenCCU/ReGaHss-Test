@@ -61,7 +61,10 @@ git clone -q --bare --filter=blob:none "${BASE_REPO}" "${history}/base.git"
 previous_rega() {
   local last
   last=$(git -C "${history}/base.git" log -1 --format=%H "$1" -- bin/x86_64-linux-gnu/ReGaHss)
-  git -C "${history}/base.git" rev-parse "${last}^"
+  # (none if the ReGaHss binary has no earlier version)
+  if [[ -n ${last} ]]; then
+    git -C "${history}/base.git" rev-parse -q --verify "${last}^" || true
+  fi
 }
 
 with_refs=()

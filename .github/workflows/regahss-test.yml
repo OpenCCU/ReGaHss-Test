@@ -148,3 +148,5 @@ jobs:
       - name: remote debug tmate session
         uses: mxschmitt/action-tmate@v3
         if: ${{ !cancelled() && inputs.debug }}
+        with:
+          limit-access-to-actor: true
