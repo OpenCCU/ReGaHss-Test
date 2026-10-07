@@ -11,6 +11,7 @@
 const {
     regaLabel,
     regaEmulator,
+    regaPreload,
     indent,
     initTest,
     cleanupTest,
@@ -96,10 +97,14 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 last.threads.should.be.belowOrEqual(warmup.threads + 2, 'number of threads keeps growing (thread leak)');
                 last.fds.should.be.belowOrEqual(warmup.fds + 8, 'number of open file descriptors keeps growing (fd leak)');
 
-                // the resident memory may grow somewhat (caches), but not without bounds
-                const growth = last.rss - warmup.rss;
-                const limit = Math.max(8192, warmup.rss * 0.25);
-                growth.should.be.below(limit, `resident memory grew by ${growth} KiB after the warmup (possible memory leak)`);
+                // the resident memory may grow somewhat (caches), but not without
+                // bounds (not checked with a preloaded sanitizer runtime: ASan keeps
+                // freed memory in its quarantine, so the RSS grows by design)
+                if (!regaPreload) {
+                    const growth = last.rss - warmup.rss;
+                    const limit = Math.max(8192, warmup.rss * 0.25);
+                    growth.should.be.below(limit, `resident memory grew by ${growth} KiB after the warmup (possible memory leak)`);
+                }
             });
         });
 

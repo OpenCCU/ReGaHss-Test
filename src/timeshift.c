@@ -30,8 +30,10 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 static int64_t offset;
 
@@ -117,6 +119,18 @@ static void *next(const char *name)
   return dlsym(RTLD_NEXT, name);
 }
 
+/* The wrappers can be called before timeshift_init() ran: a sanitizer
+ * runtime preloaded in front of this library (ASan) calls clock_gettime()
+ * while it initializes itself. The other functions are therefore resolved
+ * on first use, the clocks are read with the raw system call until then
+ * (resolving them via dlsym() there could deadlock, as dlsym() allocates
+ * memory while the ASan allocator holds its lock). */
+#define RESOLVE(var, name) \
+  do { \
+    if (!(var)) \
+      (var) = next(name); \
+  } while (0)
+
 __attribute__((constructor)) static void timeshift_init(void)
 {
   const char *value = getenv("TIMESHIFT_OFFSET");
@@ -137,6 +151,7 @@ __attribute__((constructor)) static void timeshift_init(void)
 
 int timer_create(clockid_t clock, struct sigevent *sevp, timer_t *id)
 {
+  RESOLVE(real_timer_create, "timer_create");
   int result = real_timer_create(clock, sevp, id);
   if (result == 0)
     remember_timer(*id, is_realtime(clock));
@@ -147,7 +162,13 @@ int timer_create(clockid_t clock, struct sigevent *sevp, timer_t *id)
 
 int __clock_gettime64(clockid_t clock, struct timespec64 *ts)
 {
-  int result = real_clock_gettime64(clock, ts);
+#ifdef SYS_clock_gettime64
+  int result = real_clock_gettime64 ? real_clock_gettime64(clock, ts)
+                                    : (int) syscall(SYS_clock_gettime64, clock, ts);
+#else
+  int result = real_clock_gettime64 ? real_clock_gettime64(clock, ts)
+                                    : (int) syscall(SYS_clock_gettime, clock, ts);
+#endif
   if (result == 0 && is_realtime(clock))
     ts->tv_sec += offset;
   return result;
@@ -215,6 +236,7 @@ int gettimeofday(struct timeval *tv, void *tz)
 
 int __pthread_cond_timedwait64(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec64 *abstime)
 {
+  RESOLVE(real_pthread_cond_timedwait64, "__pthread_cond_timedwait64");
   if (!abstime || !cond_is_realtime(cond))
     return real_pthread_cond_timedwait64(cond, mutex, abstime);
   struct timespec64 shifted = *abstime;
@@ -224,6 +246,7 @@ int __pthread_cond_timedwait64(pthread_cond_t *cond, pthread_mutex_t *mutex, con
 
 int __pthread_mutex_timedlock64(pthread_mutex_t *mutex, const struct timespec64 *abstime)
 {
+  RESOLVE(real_pthread_mutex_timedlock64, "__pthread_mutex_timedlock64");
   if (!abstime)
     return real_pthread_mutex_timedlock64(mutex, abstime);
   struct timespec64 shifted = *abstime;
@@ -233,6 +256,7 @@ int __pthread_mutex_timedlock64(pthread_mutex_t *mutex, const struct timespec64 
 
 int __timer_settime64(timer_t id, int flags, const struct itimerspec64 *value, struct itimerspec64 *old)
 {
+  RESOLVE(real_timer_settime64, "__timer_settime64");
   if (!value || !(flags & TIMER_ABSTIME) || !timer_is_realtime(id))
     return real_timer_settime64(id, flags, value, old);
   struct itimerspec64 shifted = *value;
@@ -245,7 +269,8 @@ int __timer_settime64(timer_t id, int flags, const struct itimerspec64 *value, s
 
 int clock_gettime(clockid_t clock, struct timespec *ts)
 {
-  int result = real_clock_gettime(clock, ts);
+  int result = real_clock_gettime ? real_clock_gettime(clock, ts)
+                                  : (int) syscall(SYS_clock_gettime, clock, ts);
   if (result == 0 && is_realtime(clock))
     ts->tv_sec += offset;
   return result;
@@ -277,6 +302,7 @@ int gettimeofday(struct timeval *tv, void *tz)
 /* legacy (32-bit) or native (64-bit) time_t variants of the waits */
 int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime)
 {
+  RESOLVE(real_pthread_cond_timedwait, "pthread_cond_timedwait");
   if (!abstime || !cond_is_realtime(cond))
     return real_pthread_cond_timedwait(cond, mutex, abstime);
   struct timespec shifted = *abstime;
@@ -286,6 +312,7 @@ int pthread_cond_timedwait(pthread_cond_t *cond, pthread_mutex_t *mutex, const s
 
 int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime)
 {
+  RESOLVE(real_pthread_mutex_timedlock, "pthread_mutex_timedlock");
   if (!abstime)
     return real_pthread_mutex_timedlock(mutex, abstime);
   struct timespec shifted = *abstime;
@@ -295,6 +322,7 @@ int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *absti
 
 int timer_settime(timer_t id, int flags, const struct itimerspec *value, struct itimerspec *old)
 {
+  RESOLVE(real_timer_settime, "timer_settime");
   if (!value || !(flags & TIMER_ABSTIME) || !timer_is_realtime(id))
     return real_timer_settime(id, flags, value, old);
   struct itimerspec shifted = *value;
