@@ -16,6 +16,8 @@
 #   BASE_REPO  OpenCCU-Base git repository
 #   BASE_REF   OpenCCU-Base branch, tag or commit SHA to test (default: main)
 #   REGA_ARCH  x86_64-linux-gnu or i686-linux-gnu
+#   REF_BASE_REF  OpenCCU-Base ref with a reference ReGaHss for differential
+#              tests of the script corpus (optional)
 #   REGA_LIBS  libXmlRpc/libxmlparser to run ReGaHss with:
 #              prebuilt  prebuilt libraries of OpenCCU-Base (default)
 #              source    built from the OpenCCU-Base sources
@@ -32,6 +34,21 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY scripts/fetch-openccu-base.sh /usr/local/bin/
 RUN fetch-openccu-base.sh "${BASE_REPO}" "${BASE_REF}" "${REGA_ARCH}" /openccu-base
+
+# fetch the ReGaHss of a reference revision for differential tests of the
+# script corpus (if requested, e.g. the previous ReGaHss version)
+FROM openccu-base AS reference
+ARG BASE_REPO=https://github.com/OpenCCU/OpenCCU-Base.git
+ARG REF_BASE_REF=
+ARG REGA_ARCH=x86_64-linux-gnu
+RUN mkdir -p /opt/regahss-ref \
+ && if [ -n "${REF_BASE_REF}" ]; then \
+      fetch-openccu-base.sh "${BASE_REPO}" "${REF_BASE_REF}" "${REGA_ARCH}" /tmp/ref binaries \
+      && install -m 0755 "/tmp/ref/bin/${REGA_ARCH}/ReGaHss" /opt/regahss-ref/ReGaHss \
+      && install -m 0644 "/tmp/ref/lib/${REGA_ARCH}/libXmlRpc.so" "/tmp/ref/lib/${REGA_ARCH}/libxmlparser.so" /opt/regahss-ref/ \
+      && cp /tmp/ref/.openccu-base-commit /opt/regahss-ref/commit \
+      && rm -rf /tmp/ref; \
+    fi
 
 # build libXmlRpc/libxmlparser from the OpenCCU-Base sources (if requested)
 FROM node:22-bookworm-slim AS libs
@@ -120,6 +137,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY --from=openccu-base /openccu-base /opt/openccu-base
+COPY --from=reference /opt/regahss-ref /opt/regahss-ref
 COPY --from=libs /opt/regahss-libs /opt/regahss-libs
 COPY . .
 RUN libs=() \

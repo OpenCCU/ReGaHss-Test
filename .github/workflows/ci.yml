@@ -90,7 +90,7 @@ jobs:
             ]
         run: |
           tests=$(jq -c --argjson variants "${VARIANTS}" \
-            '[.[] as $base | $variants[] | . + {base_name: $base.name, base_sha: $base.sha}]' <<<"${REFS}")
+            '[.[] as $base | $variants[] | . + {base_name: $base.name, base_sha: $base.sha, ref_sha: $base.ref_sha}]' <<<"${REFS}")
           images=$(jq -c --argjson variants "${VARIANTS}" \
             '[.[] as $base | $variants[] | select(.libs == "prebuilt") | . + {base_name: $base.name, base_sha: $base.sha}]' <<<"${REFS}")
           echo "tests=${tests}" >>"${GITHUB_OUTPUT}"
@@ -110,6 +110,8 @@ jobs:
       base_name: ${{ matrix.base_name }}
       arch: ${{ matrix.arch }}
       libs: ${{ matrix.libs }}
+      # differential tests of the script corpus against the previous ReGaHss
+      ref_base_ref: ${{ matrix.libs == 'prebuilt' && matrix.ref_sha || '' }}
       # (the nightly run executes the timer tests in real time)
       faketime_rate: ${{ inputs.faketime_rate || (github.event_name == 'schedule' && '1') || '' }}
       debug: ${{ inputs.debug == true }}

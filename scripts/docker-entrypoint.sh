@@ -45,6 +45,20 @@ cores_dir=${RESULTS}/cores
 rm -rf "${REGA_WORK_DIR}" "${cores_dir}"
 ulimit -c unlimited 2>/dev/null || true
 
+# reference ReGaHss for differential tests of the script corpus
+REF_DIR=/opt/regahss-ref
+ref_version=""
+if [[ -z ${REGA_REF_BIN:-} && -x ${REF_DIR}/ReGaHss ]]; then
+  export REGA_REF_BIN=${REF_DIR}/ReGaHss
+  export REGA_REF_LIB_DIR=${REF_DIR}
+fi
+if [[ -n ${REGA_REF_BIN:-} ]]; then
+  export REGA_DIFF_REPORT=${REGA_DIFF_REPORT:-${RESULTS}/differential.md}
+  rm -f "${REGA_DIFF_REPORT}"
+  ref_version=$(LD_LIBRARY_PATH=${REGA_REF_LIB_DIR:-} timeout 30 "${REGA_REF_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || echo unknown)
+  ref_version="${ref_version} (OpenCCU-Base $(cat "${REF_DIR}/commit" 2>/dev/null || echo unknown))"
+fi
+
 if [[ ${REGA_LIBS} == asan ]]; then
   sanitizer_dir=${RESULTS}/sanitizer
   rm -rf "${sanitizer_dir}"
@@ -72,6 +86,9 @@ fi
   echo "|---|---|"
   echo "| ReGaHss | ${REGA_VERSION:-unknown} (${REGA_ARCH:-unknown}) |"
   echo "| OpenCCU-Base | ${OPENCCU_BASE_COMMIT:-unknown} |"
+  if [[ -n ${ref_version} ]]; then
+    echo "| reference ReGaHss | ${ref_version} |"
+  fi
   echo "| libXmlRpc/libxmlparser | ${REGA_LIBS} |"
   echo "| node.js | $(node --version) |"
   echo "| libfaketime | $(faketime --version 2>&1 | grep -o 'Version.*' || echo unknown) (clock rate x${REGA_FAKETIME_RATE} for timer tests) |"
@@ -128,6 +145,19 @@ if [[ ${#cores[@]} -gt 0 ]]; then
   cp "${REGA_BIN}" "${cores_dir}/"
   echo "ERROR: ${#cores[@]} core dump(s) of ReGaHss found in ${cores_dir}" >&2
   [[ ${rc} -ne 0 ]] || rc=1
+fi
+
+if [[ -n ${ref_version} ]]; then
+  {
+    echo "### Script corpus: differences to the reference ReGaHss (informational)"
+    echo
+    if [[ -s ${REGA_DIFF_REPORT} ]]; then
+      cat "${REGA_DIFF_REPORT}"
+    else
+      echo "no differential report written"
+    fi
+    echo
+  } >>"${summary}"
 fi
 
 if [[ -s /etc/regahss-abi-report.txt ]]; then

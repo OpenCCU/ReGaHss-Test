@@ -9,7 +9,9 @@
 #   custom   optional additional ref (branch, tag or commit SHA) given as
 #            first argument
 #
-# Revisions resolving to the same commit are only tested once.
+# Revisions resolving to the same commit are only tested once. For each
+# revision the OpenCCU-Base revision with the previous ReGaHss version is
+# determined as reference for differential tests (ref_sha).
 #
 # Usage: resolve-base-refs.sh [extra-ref]
 #
@@ -50,10 +52,27 @@ if [[ -n ${EXTRA_REF} ]]; then
   entries+=("custom $(resolve "${EXTRA_REF}")")
 fi
 
+# history (without file contents) to determine the previous ReGaHss version
+history=$(mktemp -d)
+trap 'rm -rf "${history}"' EXIT
+git clone -q --bare --filter=blob:none "${BASE_REPO}" "${history}/base.git"
+
+# revision before the last change of the ReGaHss binary
+previous_rega() {
+  local last
+  last=$(git -C "${history}/base.git" log -1 --format=%H "$1" -- bin/x86_64-linux-gnu/ReGaHss)
+  git -C "${history}/base.git" rev-parse "${last}^"
+}
+
+with_refs=()
+for entry in "${entries[@]}"; do
+  with_refs+=("${entry} $(previous_rega "${entry#* }")")
+done
+
 # merge entries pointing to the same commit (e.g. main+release)
-refs=$(printf '%s\n' "${entries[@]}" |
-  jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {name: .[0], sha: .[1]})
-               | group_by(.sha) | map({name: (map(.name) | join("+")), sha: .[0].sha})
+refs=$(printf '%s\n' "${with_refs[@]}" |
+  jq -R -s -c 'split("\n") | map(select(length > 0) | split(" ") | {name: .[0], sha: .[1], ref_sha: .[2]})
+               | group_by(.sha) | map({name: (map(.name) | join("+")), sha: .[0].sha, ref_sha: .[0].ref_sha})
                | sort_by(.name)')
 
 echo "OpenCCU-Base revisions to test: ${refs}" >&2

@@ -54,6 +54,10 @@ on:
         description: 'ReGaHss-Test ref to check out (default: ref of the triggering event)'
         type: string
         default: ''
+      ref_base_ref:
+        description: 'OpenCCU-Base ref with a reference ReGaHss for differential tests of the script corpus (optional)'
+        type: string
+        default: ''
       faketime_rate:
         description: 'speed of the faked clock for the timer tests (1: real time, default: 10 for x86_64, 1 for i686)'
         type: string
@@ -96,6 +100,7 @@ jobs:
             BASE_REF=${{ inputs.base_ref }}
             REGA_ARCH=${{ inputs.arch }}
             REGA_LIBS=${{ inputs.libs }}
+            REF_BASE_REF=${{ inputs.ref_base_ref }}
           cache-from: type=gha,scope=${{ inputs.arch }}-${{ inputs.libs }}
           cache-to: type=gha,mode=max,scope=${{ inputs.arch }}-${{ inputs.libs }}
 
