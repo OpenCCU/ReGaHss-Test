@@ -1,29 +1,18 @@
 /* global describe  */
-/* eslint-disable no-unused-vars, import-x/no-unassigned-import, prefer-arrow-callback, capitalized-comments */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
-    rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
-    flavors,
-    indent,
+    regaLabel,
     initTest,
     cleanupTest
 } = require('../lib/helper.js');
 
 require('should');
 
-flavors.forEach(function (flavor) {
-    describe('Running ' + __filename.split('/').reverse()[0] + ' [' + flavor + ']', function () {
-        // initialize test environment
-        initTest(flavor);
+describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
+    // initialize test environment
+    initTest();
 
-        // cleanup test environment
-        cleanupTest(flavor);
-    });
+    // cleanup test environment
+    cleanupTest();
 });

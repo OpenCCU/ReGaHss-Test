@@ -1,72 +1,44 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, import-x/no-unassigned-import, prefer-arrow-callback, max-nested-callbacks, capitalized-comments */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
+
+const {promisify} = require('util');
 
 const {
-    cp,
-    rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
-    flavors,
-    indent,
+    regaLabel,
     initTest,
     cleanupTest,
     rpcCall,
-    rpcWrite
+    rpcWrite,
+    waitForRega
 } = require('../lib/helper.js');
 
 require('should');
 
-flavors.forEach(function (flavor) {
-    describe('Running ' + __filename.split('/').reverse()[0] + ' [' + flavor + ']', function () {
-        // initialize test environment
-        initTest(flavor, false, null, true);
+describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
+    // initialize test environment
+    initTest({sim: false, rpc: true});
 
-        describe('running rega rpc server error handling test...', function () {
-            it('should respond to unknown Method', function (done) {
-                if (!procs.rega) {
-                    return this.skip();
-                }
-
-                rpcCall('doesNotExist', [], function (error, result) {
-                    if (error) {
-                        done(error);
-                    } else {
-                        result.should.deepEqual({faultCode: -1, faultString: 'doesNotExist: unknown method name'});
-                        done();
-                    }
-                });
-            });
-
-            it('should log invalid params', function (done) {
-                if (!procs.rega) {
-                    return this.skip();
-                }
-
-                subscribe('rega', /invalid parameter size/, function () {
-                    done();
-                });
-                rpcCall('event', ['BidCoS-RF:1']);
-            });
-
-            it('should log incomplete binrpc message', function (done) {
-                if (!procs.rega) {
-                    return this.skip();
-                }
-
-                this.timeout(15000);
-                const buf = Buffer.from([0x42, 0x69, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x05, 0x65, 0x76, 0x65, 0x6E, 0x74, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0B]);
-                subscribe('rega', /XmlRpcServerConnection::readRequest: EOF while reading request/, function () {
-                    done();
-                });
-                rpcWrite(buf);
-            });
+    describe('running rega rpc server error handling test...', function () {
+        it('should respond to unknown Method', async function () {
+            const result = await promisify(rpcCall)('doesNotExist', []);
+            result.should.deepEqual({faultCode: -1, faultString: 'doesNotExist: unknown method name'});
         });
 
-        // cleanup test environment
-        cleanupTest(flavor);
+        it('should log invalid params', async function () {
+            const logged = waitForRega(/invalid parameter size/, {buffered: false});
+            rpcCall('event', ['BidCoS-RF:1']);
+            await logged;
+        });
+
+        it('should log incomplete binrpc message', async function () {
+            this.timeout(15000);
+            const buf = Buffer.from([0x42, 0x69, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x05, 0x65, 0x76, 0x65, 0x6E, 0x74, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0B]);
+            const logged = waitForRega(/XmlRpcServerConnection::readRequest: EOF while reading request/, {buffered: false});
+            await rpcWrite(buf);
+            await logged;
+        });
     });
+
+    // cleanup test environment
+    cleanupTest();
 });

@@ -1,0 +1,358 @@
+!! Data types, literals, operators and type conversions
+
+#### integer arithmetic and precedence
+integer a = 7;
+integer b = 3;
+WriteLine(a + b);
+WriteLine(a - b);
+WriteLine(a * b);
+WriteLine(a / b);
+WriteLine(a % b);
+WriteLine(a + b * 2);
+WriteLine((a + b) * 2);
+WriteLine(0 - a);
+---- output
+10
+4
+21
+2
+1
+13
+20
+-7
+----
+
+#### unary minus on a variable is a syntax error
+integer a = 7;
+WriteLine(-a);
+---- output
+---- errors
+SyntaxError: Error 1 at row 2 col 20
+----
+
+#### negative literals
+integer a = -7;
+WriteLine(a);
+WriteLine(3 - -2);
+WriteLine(-2.5);
+---- output
+-7
+5
+-2.500000
+----
+
+#### integer limits and overflow
+integer max = 2147483647;
+integer min = -2147483648;
+WriteLine(max);
+WriteLine(min);
+WriteLine(max + 1);
+WriteLine(min - 1);
+WriteLine(max * 2);
+---- output
+2147483647
+-2147483648
+2147483648
+-2147483649
+4294967294
+----
+
+#### real arithmetic and formatting
+real x = 10.0;
+real y = 4.0;
+WriteLine(x / y);
+WriteLine(x * y);
+WriteLine(0.1 + 0.2);
+WriteLine(1.0 / 3.0);
+WriteLine((1.0 / 3.0).ToString(2));
+WriteLine((2.0 / 3.0).ToString(0));
+WriteLine((-2.5).ToString(0));
+WriteLine(123456789.123456);
+---- output
+2.500000
+40.000000
+0.300000
+0.333333
+0.33
+1
+-3
+123456789.123456
+----
+
+#### exponent notation in literals is not supported
+WriteLine(1e3);
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 22
+----
+
+#### mixed integer and real arithmetic
+integer i = 7;
+real r = 2.0;
+WriteLine(i / r);
+WriteLine(r + i);
+WriteLine(i / 2);
+WriteLine(i * 0.5);
+var v = i / 2.0;
+WriteLine(v.VarType());
+---- output
+3
+9.000000
+3
+0
+2
+----
+
+#### integer division and modulo with negative numbers
+WriteLine(-7 / 2);
+WriteLine(7 / -2);
+WriteLine(-7 % 2);
+WriteLine(7 % -2);
+WriteLine(-7 % -2);
+---- output
+-3
+-3
+-1
+1
+-1
+----
+
+#### division by zero
+integer zero = 0;
+WriteLine(1 / zero);
+WriteLine(1 % zero);
+WriteLine(1.0 / 0.0);
+WriteLine("continued");
+---- output
+0
+0
+0.000000
+continued
+---- errors
+invalid integer division by zero (1 / 0)
+invalid integer modulo division by zero (1 % 0)
+invalid real division by zero (1.000000e+00 / 0.0)
+----
+
+#### comparison operators
+WriteLine(1 == 1);
+WriteLine(1 != 2);
+WriteLine(1 <> 1);
+WriteLine(1 < 2);
+WriteLine(2 <= 2);
+WriteLine(3 > 4);
+WriteLine(4 >= 5);
+WriteLine(1.5 == 1.5);
+WriteLine(1 == 1.0);
+---- output
+true
+true
+false
+true
+true
+false
+false
+true
+true
+----
+
+#### string comparison
+WriteLine("abc" == "abc");
+WriteLine("abc" == "ABC");
+WriteLine("abc" < "abd");
+WriteLine("b" > "a");
+WriteLine("" == "");
+WriteLine("10" == 10);
+---- output
+true
+false
+true
+true
+true
+true
+----
+
+#### logical operators
+boolean t = true;
+boolean f = false;
+WriteLine(t && f);
+WriteLine(t || f);
+WriteLine(!t);
+WriteLine(!f && t);
+WriteLine(t && !f || f);
+WriteLine(t & f);
+WriteLine(t | f);
+---- output
+false
+true
+false
+true
+true
+0
+1
+----
+
+#### bitwise like operators on integers
+WriteLine(12 & 10);
+WriteLine(12 | 10);
+WriteLine(5 & 0);
+---- output
+8
+14
+0
+----
+
+#### boolean conversions
+boolean b = 1;
+WriteLine(b);
+b = 0;
+WriteLine(b);
+b = "true";
+WriteLine(b);
+integer i = true;
+WriteLine(i);
+WriteLine(true + true);
+---- output
+1
+0
+true
+true
+true
+----
+
+#### string to number conversions
+WriteLine("42".ToInteger());
+WriteLine(" 42".ToInteger());
+WriteLine("42abc".ToInteger());
+WriteLine("abc".ToInteger());
+WriteLine("-17".ToInteger());
+WriteLine("3.75".ToFloat());
+WriteLine("3,75".ToFloat());
+WriteLine("1e2".ToFloat());
+WriteLine("".ToInteger());
+WriteLine("0x10".ToInteger());
+---- output
+42
+42
+42
+0
+-17
+3.750000
+3.000000
+100.000000
+0
+0
+----
+
+#### number to string conversions
+integer i = 42;
+real r = 3.14159;
+WriteLine(i.ToString());
+WriteLine(r.ToString(3));
+WriteLine(i.ToString(2));
+WriteLine((1.0/8.0).ToString(1));
+WriteLine(r.ToString(0));
+boolean b = true;
+WriteLine(b.ToString());
+---- output
+42
+3.142
+42
+0.1
+3
+true
+----
+
+#### methods on integer literals
+WriteLine(42.ToString());
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 57
+----
+
+#### methods on real literals
+WriteLine(3.14159.ToString(3));
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 62
+----
+
+#### var type changes dynamically
+var v = 1;
+WriteLine(v.VarType() # " " # v);
+v = 1.5;
+WriteLine(v.VarType() # " " # v);
+v = "text";
+WriteLine(v.VarType() # " " # v);
+v = true;
+WriteLine(v.VarType() # " " # v);
+v = @2020-01-01 12:00:00@;
+WriteLine(v.VarType() # " " # v);
+---- output
+2 1
+3 1.500000
+4 text
+1 true
+5 2020-01-01 12:00:00
+----
+
+#### assignments change the type of declared variables
+integer i = "12";
+WriteLine(i.VarType() # " " # i);
+real r = 5;
+WriteLine(r.VarType() # " " # r);
+string s = 5;
+WriteLine(s.VarType() # " " # s);
+boolean b = "x";
+WriteLine(b.VarType() # " " # b);
+---- output
+4 12
+2 5
+2 5
+4 x
+----
+
+#### string concatenation with numbers
+WriteLine("a" # 1 # 2.5 # true);
+WriteLine(1 # 2);
+WriteLine(1 + 2 # 3);
+string s = 1 # "";
+WriteLine(s.VarType());
+---- output
+a12.500000true
+12
+24
+4
+----
+
+#### uninitialized variables
+integer i;
+real r;
+string s;
+boolean b;
+WriteLine(i # "|" # r # "|" # s # "|" # b);
+---- output
+0|0.000000||false
+---- vars
+i=0
+r=0.000000
+s=
+b=false
+----
+
+#### compound expressions
+integer a = 2;
+integer b = 3;
+integer c = ((a + b) * (b - a)) / (a * a) + b % a;
+WriteLine(c);
+boolean d = (a < b) && ((c > 0) || false);
+WriteLine(d);
+---- output
+1
+true
+---- vars
+a=2
+b=3
+c=1
+d=true
+----

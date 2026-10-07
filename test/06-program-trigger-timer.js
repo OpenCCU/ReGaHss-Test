@@ -1,39 +1,27 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, import-x/no-unassigned-import, prefer-arrow-callback, capitalized-comments, max-nested-callbacks */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
-    rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
-    flavors,
-    indent,
+    regaLabel,
     initTest,
-    cleanupTest
+    cleanupTest,
+    waitForSim
 } = require('../lib/helper.js');
 
 require('should');
 
-flavors.forEach(function (flavor) {
-    describe('Running ' + __filename.split('/').reverse()[0] + ' [' + flavor + ']', function () {
-        // initialize test environment
-        initTest(flavor);
+describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
+    // initialize test environment
+    initTest();
 
-        // run tests
-        describe('running timer triggers virtual key test...', function () {
-            it('should PRESS_LONG BidCoS-RF:50 every minute (program TimerEveryMinute)', function (done) {
-                this.timeout(125000);
-                subscribe('sim', /BidCoS-RF:50/, function () {
-                    done();
-                });
-            });
+    // run tests
+    describe('running timer triggers virtual key test...', function () {
+        it('should PRESS_LONG BidCoS-RF:50 every minute (program TimerEveryMinute)', async function () {
+            this.timeout(125000);
+            await waitForSim(/BidCoS-RF:50/);
         });
-
-        // cleanup test environment
-        cleanupTest(flavor);
     });
+
+    // cleanup test environment
+    cleanupTest();
 });

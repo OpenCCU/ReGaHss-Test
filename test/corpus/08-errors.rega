@@ -1,0 +1,117 @@
+!! Error handling of the script engine
+
+#### syntax error: missing semicolon
+WriteLine("a")
+WriteLine("b");
+---- output
+a
+b
+----
+
+#### syntax error: unbalanced braces
+if (true) {
+  WriteLine("a");
+---- output
+---- errors
+SyntaxError: Error 1 at row 2 col 19
+----
+
+#### syntax error: unterminated string
+WriteLine("abc);
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 19
+----
+
+#### syntax error: unknown keyword
+foo bar;
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 10
+----
+
+#### runtime error: method of null object
+WriteLine("before");
+object o = dom.GetObject("does not exist");
+WriteLine(o.Name());
+WriteLine("after");
+---- output
+before
+null
+---- errors
+ScriptRuntimeError: WriteLine("before");
+----
+
+#### unknown methods are syntax errors
+WriteLine("before");
+dom.MethodDoesNotExist();
+WriteLine("after");
+---- output
+---- errors
+SyntaxError: Error 1 at row 2 col 27
+----
+
+#### runtime error: wrong argument count
+WriteLine("before");
+string s = "abc";
+WriteLine(s.Substr());
+WriteLine("after");
+---- output
+before
+abc
+---- errors
+ScriptRuntimeError: WriteLine("before");
+----
+
+#### using an undeclared variable is a syntax error
+WriteLine(undeclared);
+WriteLine("after");
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 31
+----
+
+#### assignment to an undeclared variable is a syntax error
+undeclared = 5;
+WriteLine(undeclared);
+---- output
+---- errors
+SyntaxError: Error 1 at row 2 col 31
+----
+
+#### errors inside loops
+integer i = 0;
+object o = null;
+while (i < 3) {
+  WriteLine(i);
+  i = i + 1;
+}
+WriteLine(o.Name());
+WriteLine("end");
+---- output
+0
+1
+2
+null
+---- errors
+ScriptRuntimeError: integer i = 0;
+----
+
+#### invalid type conversion
+string s = "abc";
+WriteLine(s.ToTime());
+WriteLine(s.ToFloat());
+WriteLine("ok");
+---- output
+1970-01-01 01:00:00
+0.000000
+ok
+----
+
+#### very deep nesting
+integer i = 0;
+if (true) { if (true) { if (true) { if (true) { if (true) { if (true) { if (true) { if (true) { i = 8; } } } } } } } }
+WriteLine(i);
+---- output
+8
+----

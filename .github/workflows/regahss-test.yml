@@ -1,0 +1,152 @@
+name: ReGaHss test
+
+# Reusable workflow which runs the ReGaHss-Test suite in docker against the
+# ReGaHss of an OpenCCU-Base revision. It is used by the CI of this repository
+# and can be called from other repositories, e.g. to test OpenCCU-Base pull
+# requests before they are merged:
+#
+#   jobs:
+#     regahss-test:
+#       strategy:
+#         fail-fast: false
+#         matrix:
+#           include:
+#             - {arch: x86_64-linux-gnu, libs: source}
+#             - {arch: x86_64-linux-gnu, libs: asan}
+#             - {arch: i686-linux-gnu, libs: source}
+#       uses: OpenCCU/ReGaHss-Test/.github/workflows/regahss-test.yml@master
+#       with:
+#         base_repo: ${{ github.event.pull_request.head.repo.clone_url }}
+#         base_ref: ${{ github.event.pull_request.head.sha }}
+#         arch: ${{ matrix.arch }}
+#         libs: ${{ matrix.libs }}
+#         test_repo: OpenCCU/ReGaHss-Test
+#         test_ref: master
+
+on:
+  workflow_call:
+    inputs:
+      base_repo:
+        description: 'OpenCCU-Base git repository URL'
+        type: string
+        default: 'https://github.com/OpenCCU/OpenCCU-Base.git'
+      base_ref:
+        description: 'OpenCCU-Base branch, tag or commit SHA to test'
+        type: string
+        required: true
+      base_name:
+        description: 'name of the OpenCCU-Base revision used in labels (default: base_ref)'
+        type: string
+        default: ''
+      arch:
+        description: 'ReGaHss architecture (x86_64-linux-gnu, i686-linux-gnu, aarch64-linux-gnu or arm-linux-gnueabihf, the ARM binaries run with qemu)'
+        type: string
+        default: 'x86_64-linux-gnu'
+      libs:
+        description: 'libXmlRpc/libxmlparser variant (prebuilt, source or asan)'
+        type: string
+        default: 'prebuilt'
+      test_repo:
+        description: 'ReGaHss-Test repository to check out (set when called from another repository)'
+        type: string
+        default: ''
+      test_ref:
+        description: 'ReGaHss-Test ref to check out (default: ref of the triggering event)'
+        type: string
+        default: ''
+      ref_base_ref:
+        description: 'OpenCCU-Base ref with a reference ReGaHss for differential tests of the script corpus (optional)'
+        type: string
+        default: ''
+      faketime_rate:
+        description: 'speed of the faked clock for the timer tests (1: real time, default: 10 for 64-bit, 1 for 32-bit ReGaHss)'
+        type: string
+        default: ''
+      jobs:
+        description: 'number of test files to run in parallel'
+        type: string
+        default: '4'
+      fuzz_iterations:
+        description: 'number of fuzzing inputs per interface (test/21-fuzzing.js)'
+        type: string
+        default: ''
+      soak_seconds:
+        description: 'duration of the stability/soak test in seconds (test/22-stability.js)'
+        type: string
+        default: ''
+      debug:
+        description: 'enter remote debug environment after the tests'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: ReGaHss (${{ inputs.arch }}, ${{ inputs.libs }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.test_repo || github.repository }}
+          ref: ${{ inputs.test_ref }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: regahss-test:ci
+          build-args: |
+            BASE_REPO=${{ inputs.base_repo }}
+            BASE_REF=${{ inputs.base_ref }}
+            REGA_ARCH=${{ inputs.arch }}
+            REGA_LIBS=${{ inputs.libs }}
+            REF_BASE_REF=${{ inputs.ref_base_ref }}
+          cache-from: type=gha,scope=${{ inputs.arch }}-${{ inputs.libs }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.arch }}-${{ inputs.libs }}
+
+      - name: enable core dumps
+        # (written into the working directory of the crashed ReGaHss, from
+        # where the test image collects them into results/cores)
+        run: sudo sysctl -w kernel.core_pattern=core.%e.%p
+
+      - name: run ReGaHss tests
+        env:
+          REGA_LABEL: ${{ inputs.arch }}@${{ inputs.base_name || inputs.base_ref }}/${{ inputs.libs }}
+          REGA_FAKETIME_RATE: ${{ inputs.faketime_rate }}
+          REGA_JOBS: ${{ inputs.jobs }}
+          REGA_FUZZ_ITERATIONS: ${{ inputs.fuzz_iterations }}
+          REGA_SOAK_SECONDS: ${{ inputs.soak_seconds }}
+        run: |
+          mkdir -p results
+          docker run --rm --init --ulimit core=-1 \
+            -e REGA_LABEL -e REGA_FAKETIME_RATE -e REGA_JOBS -e REGA_FUZZ_ITERATIONS -e REGA_SOAK_SECONDS \
+            -v "${PWD}/results:/results" regahss-test:ci
+
+      - name: job summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [[ -s results/summary.md ]]; then
+            cat results/summary.md >>"${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: regahss-test-${{ inputs.arch }}-${{ inputs.libs }}-${{ inputs.base_name || inputs.base_ref }}
+          path: results/
+          if-no-files-found: ignore
+
+      - name: remote debug tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ !cancelled() && inputs.debug }}
+        with:
+          limit-access-to-actor: true

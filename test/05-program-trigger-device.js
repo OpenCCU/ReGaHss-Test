@@ -1,40 +1,40 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, import-x/no-unassigned-import, prefer-arrow-callback, max-nested-callbacks, capitalized-comments */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
-    rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
-    flavors,
-    indent,
+    regaLabel,
     initTest,
-    cleanupTest
+    cleanupTest,
+    simulator,
+    waitForSim
 } = require('../lib/helper.js');
 
 require('should');
 
-flavors.forEach(function (flavor) {
-    describe('Running ' + __filename.split('/').reverse()[0] + ' [' + flavor + ']', function () {
-        // initialize test environment
-        initTest(flavor);
+describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
+    // initialize test environment
+    initTest();
 
-        // run tests
-        describe('running virtual key triggers program test...', function () {
-            it('should PRESS_LONG BidCoS-RF:2 when PRESS_SHORT BidCoS-RF:1 (program Key1)', function (done) {
-                // BidCoS-RF:1 PRESS_SHORT is pressed by the simulator every 5 seconds
-                this.timeout(90000);
-                subscribe('sim', /setValue rfd BidCoS-RF:2 PRESS_LONG true/, function () {
-                    done();
-                });
-            });
+    // run tests
+    describe('running virtual key triggers program test...', function () {
+        it('should PRESS_LONG BidCoS-RF:2 when PRESS_SHORT BidCoS-RF:1 (program Key1)', async function () {
+            this.timeout(30000);
+            // the simulated rfd reports a short key press of BidCoS-RF:1
+            await Promise.all([
+                waitForSim(/setValue rfd BidCoS-RF:2 PRESS_LONG true/, {buffered: false}),
+                simulator().interface('BidCos-RF').event('BidCoS-RF:1', 'PRESS_SHORT', true)
+            ]);
         });
 
-        // cleanup test environment
-        cleanupTest(flavor);
+        it('should PRESS_LONG BidCoS-RF:17 when PRESS_LONG BidCoS-RF:16 (program Key16Key17)', async function () {
+            this.timeout(30000);
+            await Promise.all([
+                waitForSim(/setValue rfd BidCoS-RF:17 PRESS_LONG true/, {buffered: false}),
+                simulator().interface('BidCos-RF').event('BidCoS-RF:16', 'PRESS_LONG', true)
+            ]);
+        });
     });
+
+    // cleanup test environment
+    cleanupTest();
 });

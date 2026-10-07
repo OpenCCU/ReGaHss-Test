@@ -1,0 +1,204 @@
+!! Object model queries on the test homematic.regadom
+
+#### DOM root object
+WriteLine(dom.Name() # " " # dom.ID() # " " # dom.Type());
+WriteLine(dom.BuildLabel().Length() > 0);
+---- output
+DOM 1 9
+true
+----
+
+#### well known object lists
+WriteLine(dom.GetObject(ID_SYSTEM_VARIABLES).Name() # " " # dom.GetObject(ID_SYSTEM_VARIABLES).Count());
+WriteLine(dom.GetObject(ID_PROGRAMS).Name() # " " # dom.GetObject(ID_PROGRAMS).Count());
+WriteLine(dom.GetObject(ID_ROOMS).Name() # " " # dom.GetObject(ID_ROOMS).Count());
+WriteLine(dom.GetObject(ID_FUNCTIONS).Name() # " " # dom.GetObject(ID_FUNCTIONS).Count());
+WriteLine(dom.GetObject(ID_DEVICES).Name() # " " # dom.GetObject(ID_DEVICES).Count());
+WriteLine(dom.GetObject(ID_CHANNELS).Name() # " " # dom.GetObject(ID_CHANNELS).Count());
+WriteLine(dom.GetObject(ID_DATAPOINTS).Name() # " " # dom.GetObject(ID_DATAPOINTS).Count());
+WriteLine(dom.GetObject(ID_INTERFACES).Name() # " " # dom.GetObject(ID_INTERFACES).Count());
+WriteLine(dom.GetObject(ID_CALENDARDPS).Name() # " " # dom.GetObject(ID_CALENDARDPS).Count());
+WriteLine(dom.GetObject(ID_USERS).Name() # " " # dom.GetObject(ID_USERS).Count());
+---- output
+Root System Variables 10
+Root Programs 28
+Rooms 11
+Functions 10
+Root devices 3
+Root channels 105
+Root data points 315
+Root interfaces 4
+Root Calendars 22
+Root users 6
+----
+
+#### system variables of the test regadom
+string id;
+foreach (id, dom.GetObject(ID_SYSTEM_VARIABLES).EnumUsedIDs()) {
+  object sv = dom.GetObject(id);
+  WriteLine(sv.Name() # " type=" # sv.ValueType() # "/" # sv.ValueSubType() # " value=" # sv.Value() # " unit=" # sv.ValueUnit());
+}
+---- output
+${sysVarAlarmZone1} type=2/6 value= unit=
+${sysVarPresence} type=2/2 value=true unit=
+DutyCycle type=4/0 value=0.000000 unit=%
+VarAlarm1 type=2/6 value= unit=
+VarBool1 type=2/2 value=false unit=
+VarEnum1 type=16/29 value=0 unit=
+VarNum1 type=4/0 value=0.000000 unit=
+VarString1 type=20/11 value=??? unit=
+----
+
+#### get objects by name and id
+object a = dom.GetObject("VarBool1");
+object b = dom.GetObject(a.ID());
+WriteLine(a.ID() == b.ID());
+WriteLine(a.Name());
+WriteLine(dom.GetObject("does not exist"));
+WriteLine(dom.GetObject(999999));
+---- output
+true
+VarBool1
+null
+null
+----
+
+#### interfaces
+string id;
+foreach (id, dom.GetObject(ID_INTERFACES).EnumUsedIDs()) {
+  object i = dom.GetObject(id);
+  ! (without the ports, which differ between parallel test runs)
+  WriteLine(i.Name() # " " # i.InterfaceUrl().StrValueByIndex(":", 0) # " " # i.InterfaceInfo());
+}
+---- output
+BidCos-RF xmlrpc_bin BidCos-RF
+VirtualDevices xmlrpc Virtual Devices
+HmIP-RF xmlrpc HmIP-RF
+CUxD  CUxD
+----
+
+#### devices and channels
+! (intermediate variables, see 09-expressions.rega for nested calls)
+string id;
+foreach (id, dom.GetObject(ID_DEVICES).EnumUsedIDs()) {
+  object dev = dom.GetObject(id);
+  integer ifaceId = dev.Interface();
+  object iface = dom.GetObject(ifaceId);
+  WriteLine(dev.Name() # " " # dev.Address() # " " # dev.HssType() # " " # iface.Name() # " channels=" # dev.Channels().Count());
+}
+object ch = dom.GetObject("HM-RCV-50 BidCoS-RF:1");
+WriteLine(ch.Name() # " " # ch.Address() # " " # ch.HssType() # " " # ch.ChnNumber());
+integer devId = ch.Device();
+object chDev = dom.GetObject(devId);
+WriteLine(chDev.Address());
+---- output
+HM-RCV-50 BidCoS-RF BidCoS-RF  BidCos-RF channels=51
+HmIP-RCV-50 001F58A992F2A6 001F58A992F2A6  HmIP-RF channels=51
+HM-RCV-50 BidCoS-RF:1 BidCoS-RF:1 VIRTUAL_KEY 1
+BidCoS-RF
+----
+
+#### datapoints of a channel
+object ch = dom.GetObject("HM-RCV-50 BidCoS-RF:1");
+string id;
+foreach (id, ch.DPs().EnumUsedIDs()) {
+  object dp = dom.GetObject(id);
+  WriteLine(dp.Name() # " vt=" # dp.ValueType() # " st=" # dp.ValueSubType() # " op=" # dp.Operations());
+}
+---- output
+BidCos-RF.BidCoS-RF:1.PRESS_LONG vt=2 st=28 op=6
+BidCos-RF.BidCoS-RF:1.PRESS_SHORT vt=2 st=28 op=6
+BidCos-RF.BidCoS-RF:1.LEVEL vt=6 st=0 op=2
+----
+
+#### object types
+WriteLine(dom.GetObject("VarBool1").IsTypeOf(OT_VARDP));
+WriteLine(dom.GetObject("VarBool1").IsTypeOf(OT_PROGRAM));
+WriteLine(dom.GetObject("TimeEveryMinute").IsTypeOf(OT_PROGRAM));
+WriteLine(dom.GetObject("VarBool1").TypeName());
+WriteLine(dom.GetObject("TimeEveryMinute").TypeName());
+WriteLine(dom.GetObject(ID_ROOMS).TypeName());
+---- output
+true
+false
+true
+VARDP
+PROGRAM
+ENUM
+----
+
+#### enumerate names
+string name;
+integer n = 0;
+foreach (name, dom.GetObject(ID_PROGRAMS).EnumUsedNames()) {
+  if (name.StartsWith("Bool1")) {
+    WriteLine(name);
+  }
+  n = n + 1;
+}
+WriteLine(n);
+---- output
+Bool1OnFalse
+Bool1OnFalseUpdate
+Bool1OnTrue
+Bool1OnTrueUpdate
+28
+----
+
+#### system variable values
+object b = dom.GetObject("VarBool1");
+b.State(true);
+WriteLine(b.Value() # " " # b.State() # " " # b.Variable());
+b.State(false);
+WriteLine(b.Value() # " " # b.State());
+object e = dom.GetObject("VarEnum1");
+WriteLine(e.ValueList() # " " # e.Value());
+object num = dom.GetObject("VarNum1");
+num.State(42.5);
+WriteLine(num.Value() # " " # num.ValueMin() # " " # num.ValueMax());
+object s = dom.GetObject("VarString1");
+s.State("hello");
+WriteLine(s.Value());
+---- output
+true true 1
+false false
+Wert 1;Wert 2;Wert 3 0
+42.500000 0 65000
+hello
+----
+
+#### timestamps of value changes
+object num = dom.GetObject("VarNum1");
+num.State(1);
+WriteLine(num.Timestamp().ToInteger() > 0);
+WriteLine(num.LastValue() # " " # num.Value());
+num.State(2);
+WriteLine(num.LastValue() # " " # num.Value());
+---- output
+true
+42.500000 1.000000
+1.000000 2.000000
+----
+
+#### object creation and deletion
+object sv = dom.CreateObject(OT_VARDP, "CorpusTempVar");
+WriteLine(sv.Name() # " " # sv.IsTypeOf(OT_VARDP));
+integer id = sv.ID();
+WriteLine(dom.GetObject("CorpusTempVar").ID() == id);
+WriteLine(dom.DeleteObject(sv));
+WriteLine(dom.GetObject("CorpusTempVar"));
+WriteLine(dom.GetObject(id));
+---- output
+CorpusTempVar true
+true
+true
+null
+null
+----
+
+#### datapoint values of virtual keys
+object dp = dom.GetObject("BidCos-RF.BidCoS-RF:1.PRESS_SHORT");
+WriteLine(dp.Name() # " " # dp.ValueType() # " " # dp.ValueSubType());
+---- output
+BidCos-RF.BidCoS-RF:1.PRESS_SHORT 2 28
+----
