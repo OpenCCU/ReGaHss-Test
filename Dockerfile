@@ -10,6 +10,7 @@
 #     --build-arg REGA_LIBS=prebuilt .
 #   docker run --rm --init -v "$PWD/results:/results" regahss-test
 #   docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js
+#   docker run --rm --init -e REGA_JOBS=4 -e REGA_FAKETIME_RATE=1 regahss-test
 #
 # Build arguments:
 #   BASE_REPO  OpenCCU-Base git repository
@@ -51,12 +52,15 @@ RUN mkdir -p /opt/regahss-libs \
  && rm -rf /var/lib/apt/lists/* \
  && build-libs.sh /opt/openccu-base "${REGA_ARCH}" "${REGA_LIBS}" /opt/regahss-libs
 
-# build libfaketime from source: the 32-bit ReGaHss uses the glibc time64 ABI
-# (__clock_gettime64 & co.) which is only supported since libfaketime 0.9.13
-FROM node:22-bookworm-slim AS libfaketime
+# build the preload libraries for the ReGaHss architecture: libfaketime from
+# source (the 32-bit ReGaHss uses the glibc time64 ABI, __clock_gettime64 &
+# co., which is only supported since libfaketime 0.9.13) and liblinebuf (line
+# buffered ReGaHss output, see src/linebuf.c)
+FROM node:22-bookworm-slim AS tools
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG LIBFAKETIME_REF=v0.9.13
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY src/linebuf.c /src/linebuf.c
 RUN packages=(ca-certificates git make gcc libc6-dev) \
  && cc=gcc \
  && if [ "${REGA_ARCH}" = "i686-linux-gnu" ]; then packages+=(gcc-multilib); cc="gcc -m32"; fi \
@@ -64,7 +68,9 @@ RUN packages=(ca-certificates git make gcc libc6-dev) \
  && apt-get install -y --no-install-recommends "${packages[@]}" \
  && rm -rf /var/lib/apt/lists/* \
  && git clone -q --depth 1 --branch "${LIBFAKETIME_REF}" https://github.com/wolfcw/libfaketime.git /src/libfaketime \
- && make -C /src/libfaketime/src CC="${cc}" PREFIX=/usr/local all install
+ && make -C /src/libfaketime/src CC="${cc}" PREFIX=/usr/local all install \
+ && mkdir -p /usr/local/lib/regahss-test \
+ && ${cc} -shared -fPIC -O2 -Wall -o /usr/local/lib/regahss-test/liblinebuf.so /src/linebuf.c
 
 # test environment
 FROM node:22-bookworm-slim
@@ -76,9 +82,11 @@ LABEL org.opencontainers.image.source="https://github.com/OpenCCU/ReGaHss-Test" 
       org.opencontainers.image.licenses="MIT"
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Europe/Berlin \
-    REGA_BIN=/bin/ReGaHss
+    REGA_BIN=/bin/ReGaHss \
+    REGA_LINEBUF_LIB=/usr/local/lib/regahss-test/liblinebuf.so \
+    REGA_FAKETIME_LIB=/usr/local/lib/faketime/libfaketime.so.1
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN packages=(ca-certificates expect procps tzdata) \
+RUN packages=(ca-certificates gdb procps tzdata) \
  && case "${REGA_ARCH}" in \
       x86_64-linux-gnu) ;; \
       i686-linux-gnu) \
@@ -103,8 +111,9 @@ RUN packages=(ca-certificates expect procps tzdata) \
       && ln -s /opt/gcovr/bin/gcovr /usr/local/bin/gcovr; \
     fi
 
-COPY --from=libfaketime /usr/local/bin/faketime /usr/local/bin/faketime
-COPY --from=libfaketime /usr/local/lib/faketime /usr/local/lib/faketime
+COPY --from=tools /usr/local/bin/faketime /usr/local/bin/faketime
+COPY --from=tools /usr/local/lib/faketime /usr/local/lib/faketime
+COPY --from=tools /usr/local/lib/regahss-test /usr/local/lib/regahss-test
 
 WORKDIR /opt/regahss-test
 COPY package.json package-lock.json ./

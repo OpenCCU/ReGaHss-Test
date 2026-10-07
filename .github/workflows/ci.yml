@@ -13,6 +13,10 @@ on:
         description: 'additional OpenCCU-Base ref (branch, tag or commit SHA) to test'
         required: false
         default: ''
+      faketime_rate:
+        description: 'speed of the faked clock for the timer tests (1: real time as in the nightly run, default: 10 for x86_64, 1 for i686)'
+        required: false
+        default: ''
       legacy_occu:
         description: 'additionally run the legacy OCCU (OpenCCU/occu) based tests'
         type: boolean
@@ -106,6 +110,8 @@ jobs:
       base_name: ${{ matrix.base_name }}
       arch: ${{ matrix.arch }}
       libs: ${{ matrix.libs }}
+      # (the nightly run executes the timer tests in real time)
+      faketime_rate: ${{ inputs.faketime_rate || (github.event_name == 'schedule' && '1') || '' }}
       debug: ${{ inputs.debug == true }}
 
   publish:

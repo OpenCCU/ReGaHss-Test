@@ -2,9 +2,10 @@
 #
 # Entrypoint of the ReGaHss-Test docker image: prints the versions of the
 # components under test, executes the given command (default: test suite)
-# and afterwards evaluates sanitizer reports and library coverage (asan
-# variant). A markdown summary plus all reports are written to
-# REGA_RESULTS_DIR (default: /results, mount it to keep the results).
+# and afterwards evaluates the test results (JUnit report), core dumps,
+# sanitizer reports and library coverage (asan variant). A markdown summary
+# plus all reports are written to REGA_RESULTS_DIR (default: /results, mount
+# it to keep the results).
 #
 set -uo pipefail
 
@@ -17,6 +18,12 @@ LIBS_BUILD_DIR=/opt/regahss-libs/build
 BASE_DIR=/opt/openccu-base
 
 export REGA_BIN=${REGA_BIN:-/bin/ReGaHss}
+# speed of the faked clock for the timer tests (real time for the 32-bit
+# ReGaHss, as libfaketime does not accelerate the waits of its timer thread)
+if [[ -z ${REGA_FAKETIME_RATE:-} ]]; then
+  [[ ${REGA_ARCH:-} == i686-linux-gnu ]] && REGA_FAKETIME_RATE=1 || REGA_FAKETIME_RATE=10
+fi
+export REGA_FAKETIME_RATE
 export REGA_LABEL=${REGA_LABEL:-${REGA_ARCH:-unknown}@${OPENCCU_BASE_COMMIT:0:7}/${REGA_LIBS}}
 
 mkdir -p "${RESULTS}"
@@ -25,6 +32,18 @@ summary=${RESULTS}/summary.md
 # keep the output of each ReGaHss instance
 export REGA_LOG_DIR=${REGA_LOG_DIR:-${RESULTS}/logs}
 rm -rf "${REGA_LOG_DIR}"
+
+# JUnit report of the test suite
+export REGA_JUNIT_FILE=${REGA_JUNIT_FILE:-${RESULTS}/junit.xml}
+rm -f "${REGA_JUNIT_FILE}"
+
+# working directories of the ReGaHss instances, which also receive core dumps
+# of ReGaHss if the kernel.core_pattern of the host is a relative file name
+# (e.g. 'core.%e.%p') and core dumps are enabled ('docker run --ulimit core=-1')
+export REGA_WORK_DIR=${REGA_WORK_DIR:-/tmp/regahss-test}
+cores_dir=${RESULTS}/cores
+rm -rf "${REGA_WORK_DIR}" "${cores_dir}"
+ulimit -c unlimited 2>/dev/null || true
 
 if [[ ${REGA_LIBS} == asan ]]; then
   sanitizer_dir=${RESULTS}/sanitizer
@@ -55,8 +74,9 @@ fi
   echo "| OpenCCU-Base | ${OPENCCU_BASE_COMMIT:-unknown} |"
   echo "| libXmlRpc/libxmlparser | ${REGA_LIBS} |"
   echo "| node.js | $(node --version) |"
-  echo "| libfaketime | $(faketime --version 2>&1 | grep -o 'Version.*' || echo unknown) |"
+  echo "| libfaketime | $(faketime --version 2>&1 | grep -o 'Version.*' || echo unknown) (clock rate x${REGA_FAKETIME_RATE} for timer tests) |"
   echo "| timezone | ${TZ:-unset} ($(date +%Z)) |"
+  echo "| parallel jobs | ${REGA_JOBS:-1} |"
   echo
 } >"${summary}"
 cat "${summary}"
@@ -69,15 +89,46 @@ rc=$?
   echo
   if [[ ${rc} -eq 0 ]]; then
     echo "passed"
-    if [[ ${REGA_LIBS} == asan ]]; then
-      echo
-      echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
-    fi
   else
     echo "**FAILED** (exit code ${rc})"
   fi
   echo
+  if [[ -s ${REGA_JUNIT_FILE} ]]; then
+    node "$(dirname "$0")/junit-summary.js" "${REGA_JUNIT_FILE}" || echo "JUnit summary failed"
+    echo
+  fi
+  if [[ ${REGA_LIBS} == asan ]]; then
+    echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
+    echo
+  fi
 } >>"${summary}"
+
+# core dumps of crashed ReGaHss processes (incl. backtraces)
+mapfile -t cores < <(find "${REGA_WORK_DIR}" -type f -name 'core*' 2>/dev/null | sort)
+if [[ ${#cores[@]} -gt 0 ]]; then
+  mkdir -p "${cores_dir}"
+  {
+    echo "### Core dumps"
+    echo
+    echo "**${#cores[@]} core dump(s) found:**"
+    echo
+    for core in "${cores[@]}"; do
+      name=$(basename "$(dirname "${core}")")-$(basename "${core}")
+      mv "${core}" "${cores_dir}/${name}"
+      gdb -q -batch -ex 'info sharedlibrary' -ex 'thread apply all bt' "${REGA_BIN}" "${cores_dir}/${name}" >"${cores_dir}/${name}.txt" 2>&1
+      echo "<details><summary>${name}</summary>"
+      echo
+      echo '```'
+      grep -v '^\[New LWP' "${cores_dir}/${name}.txt" | head -n 80
+      echo '```'
+      echo "</details>"
+      echo
+    done
+  } >>"${summary}"
+  cp "${REGA_BIN}" "${cores_dir}/"
+  echo "ERROR: ${#cores[@]} core dump(s) of ReGaHss found in ${cores_dir}" >&2
+  [[ ${rc} -ne 0 ]] || rc=1
+fi
 
 if [[ -s /etc/regahss-abi-report.txt ]]; then
   cp /etc/regahss-abi-report.txt "${RESULTS}/abi-report.txt"

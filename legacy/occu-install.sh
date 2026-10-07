@@ -21,11 +21,17 @@ REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 umask 022
 
 echo "STEP: installing required packages"
-packages=(expect)
+packages=(gcc libc6-dev)
+cflags=()
 if [[ ! ${ARCH} =~ 64 ]]; then
   packages+=(libc6:i386 libstdc++6:i386 gcc-multilib)
+  cflags+=(-m32)
 fi
 apt-get -qq install -y "${packages[@]}"
+
+echo "STEP: compiling liblinebuf"
+install -d /usr/local/lib/regahss-test
+gcc "${cflags[@]}" -shared -fPIC -O2 -o /usr/local/lib/regahss-test/liblinebuf.so "${REPO_DIR}/src/linebuf.c"
 
 echo "STEP: compiling libfaketime ${FAKETIME_REF}"
 if [[ ! -x /bin/faketime ]]; then

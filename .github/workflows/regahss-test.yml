@@ -54,6 +54,14 @@ on:
         description: 'ReGaHss-Test ref to check out (default: ref of the triggering event)'
         type: string
         default: ''
+      faketime_rate:
+        description: 'speed of the faked clock for the timer tests (1: real time, default: 10 for x86_64, 1 for i686)'
+        type: string
+        default: ''
+      jobs:
+        description: 'number of test files to run in parallel'
+        type: string
+        default: '4'
       debug:
         description: 'enter remote debug environment after the tests'
         type: boolean
@@ -91,12 +99,21 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.arch }}-${{ inputs.libs }}
           cache-to: type=gha,mode=max,scope=${{ inputs.arch }}-${{ inputs.libs }}
 
+      - name: enable core dumps
+        # (written into the working directory of the crashed ReGaHss, from
+        # where the test image collects them into results/cores)
+        run: sudo sysctl -w kernel.core_pattern=core.%e.%p
+
       - name: run ReGaHss tests
         env:
           REGA_LABEL: ${{ inputs.arch }}@${{ inputs.base_name || inputs.base_ref }}/${{ inputs.libs }}
+          REGA_FAKETIME_RATE: ${{ inputs.faketime_rate }}
+          REGA_JOBS: ${{ inputs.jobs }}
         run: |
           mkdir -p results
-          docker run --rm --init -e REGA_LABEL -v "${PWD}/results:/results" regahss-test:ci
+          docker run --rm --init --ulimit core=-1 \
+            -e REGA_LABEL -e REGA_FAKETIME_RATE -e REGA_JOBS \
+            -v "${PWD}/results:/results" regahss-test:ci
 
       - name: job summary
         if: ${{ !cancelled() }}
