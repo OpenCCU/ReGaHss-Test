@@ -250,8 +250,11 @@ foreach (id, dom.GetObject(${replacedId}).Channels().EnumUsedIDs()) { WriteLine(
                     }]
                 }));
                 Number(output).should.be.above(0);
-                await hmip().event(contact + ':1', 'STATE', 1);
+                // (ReGaHss activates new programs asynchronously, thus the event
+                // is repeated until the program reacted)
                 await until(async () => {
+                    await hmip().event(contact + ':1', 'STATE', 1);
+                    await sleep(200);
                     const result = await rega.exec('Write(dom.GetObject("VarString1").Value());');
                     return result.output;
                 }, 'window open');
