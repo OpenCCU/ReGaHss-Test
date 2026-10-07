@@ -23,6 +23,9 @@ require('should');
 const contact = '0000D3C98C9233';
 const actor = '000213C990986A';
 const virtualSwitch = 'INT0000001';
+// (copies of the contact for replaceDevice)
+const replacedContact = '0000D3C98C0001';
+const replacementContact = '0000D3C98C0002';
 
 const sleep = ms => new Promise(resolve => {
     setTimeout(resolve, ms);
@@ -54,6 +57,19 @@ foreach (id, dom.GetObject(ID_DEVICES).EnumUsedIDs()) {
 }`);
     return output;
 }
+
+// IDs of the devices with the given address
+async function deviceIds(address) {
+    const {output} = await rega.exec(`
+string id;
+foreach (id, dom.GetObject(ID_DEVICES).EnumUsedIDs()) {
+  if (dom.GetObject(id).Address() == "${address}") { Write(id # " "); }
+}`);
+    return output.trim();
+}
+
+// fixture device description of the contact with another address
+const contactCopy = address => JSON.parse(JSON.stringify(fixtureDevice('HmIP-RF', contact)).replaceAll(contact, address));
 
 async function datapoint(name) {
     const {output} = await rega.exec(`
@@ -157,6 +173,43 @@ foreach (id, ch.DPs().EnumUsedIDs()) {
             it('should not know readdedDevice', async function () {
                 const result = await hmip().call('readdedDevice', [[contact]]);
                 result.should.deepEqual({faultCode: -1, faultString: 'readdedDevice: unknown method name'});
+            });
+
+            it('should replace a device by another one (replaceDevice)', async function () {
+                this.timeout(30_000);
+                await hmip().addDevices(contactCopy(replacedContact));
+                await hmip().addDevices(contactCopy(replacementContact));
+                await until(() => deviceIds(replacementContact).then(ids => String(ids.length > 0)), 'true');
+                const replacedId = await deviceIds(replacedContact);
+                const usage = [];
+                const recordUsage = call => {
+                    if (call.method === 'reportValueUsage') {
+                        usage.push(call.params);
+                    }
+                };
+
+                simulator().on('call', recordUsage);
+                try {
+                    const result = await hmip().call('replaceDevice', [replacedContact, replacementContact]);
+                    result.should.equal('');
+                    // the object of the replaced device (incl. its channels and
+                    // their IDs) takes over the address of the replacement
+                    await until(() => deviceIds(replacementContact), replacedId);
+                    const replaced = await deviceIds(replacedContact);
+                    replaced.should.equal('');
+                    const {output} = await rega.exec(`
+string id;
+foreach (id, dom.GetObject(${replacedId}).Channels().EnumUsedIDs()) { WriteLine(dom.GetObject(id).Address()); }`);
+                    output.should.equal(replacementContact + ':0\r\n' + replacementContact + ':1\r\n');
+                } finally {
+                    simulator().off('call', recordUsage);
+                }
+
+                // (records the behaviour: ReGaHss reports the datapoints of the
+                // replaced device as unused, but without their channel address)
+                usage.length.should.be.above(0);
+                usage.map(([address]) => address).should.containEql('');
+                usage.map(([, key]) => key).should.containEql('STATE');
             });
         });
 
@@ -273,9 +326,10 @@ foreach (id, ch.DPs().EnumUsedIDs()) {
                 this.timeout(30_000);
                 // (restores the registration lost above)
                 hmip().register(lostRegistration.url, lostRegistration.id);
-                const result = await hmip().deleteDevices([actor]);
+                const result = await hmip().deleteDevices([actor, replacementContact]);
                 result.should.equal('');
                 await until(() => device(actor), '');
+                await until(() => deviceIds(replacementContact), '');
                 const value = await datapoint('HmIP-RF.' + actor + ':3.STATE');
                 value.should.equal('missing');
             });
