@@ -14,7 +14,7 @@ on:
         required: false
         default: ''
       faketime_rate:
-        description: 'speed of the faked clock for the timer tests (1: real time as in the nightly run, default: 10 for x86_64, 1 for i686)'
+        description: 'speed of the faked clock for the timer tests (1: real time as in the nightly run, default: 10 for 64-bit, 1 for 32-bit ReGaHss)'
         required: false
         default: ''
       legacy_occu:
@@ -86,7 +86,9 @@ jobs:
               {"arch": "x86_64-linux-gnu", "libs": "source"},
               {"arch": "x86_64-linux-gnu", "libs": "asan"},
               {"arch": "i686-linux-gnu", "libs": "prebuilt"},
-              {"arch": "i686-linux-gnu", "libs": "source"}
+              {"arch": "i686-linux-gnu", "libs": "source"},
+              {"arch": "aarch64-linux-gnu", "libs": "prebuilt"},
+              {"arch": "arm-linux-gnueabihf", "libs": "prebuilt"}
             ]
         run: |
           tests=$(jq -c --argjson variants "${VARIANTS}" \

@@ -28,6 +28,43 @@ error() {
   exit 1
 }
 
+# the ARM binaries run with the qemu user mode emulator (no binfmt_misc
+# registration required), their libraries are installed into the multiarch
+# directory of the architecture, which the loader of the guest searches
+EMULATOR=""
+LOADER=""
+case ${ARCH} in
+  aarch64-linux-gnu)
+    EMULATOR=qemu-aarch64-static
+    LOADER=/lib/ld-linux-aarch64.so.1
+    LIB_DIR=/usr/lib/${ARCH}
+    ;;
+  arm-linux-gnueabihf)
+    EMULATOR=qemu-arm-static
+    LOADER=/lib/ld-linux-armhf.so.3
+    LIB_DIR=/usr/lib/${ARCH}
+    ;;
+esac
+if [[ -n ${EMULATOR} ]]; then
+  command -v "${EMULATOR}" >/dev/null || error "${EMULATOR} (qemu-user-static) required to run the ${ARCH} ReGaHss"
+  [[ -e ${LOADER} ]] || error "${LOADER} missing (install the ${ARCH} C library)"
+fi
+
+# like ldd [-r], also for emulated binaries (via the loader of the guest)
+list_dependencies() {
+  if [[ -z ${EMULATOR} ]]; then
+    ldd "$@"
+    return
+  fi
+
+  local relocations=""
+  if [[ $1 == -r ]]; then
+    relocations=yes
+    shift
+  fi
+  LD_TRACE_LOADED_OBJECTS=1 LD_WARN=yes LD_BIND_NOW=${relocations} "${EMULATOR}" "${LOADER}" "$1"
+}
+
 [[ -f ${BASE_DIR}/bin/${ARCH}/ReGaHss ]] || error "ReGaHss binary for ${ARCH} missing in ${BASE_DIR}"
 for lib in "${LIBS[@]}"; do
   [[ -f ${BASE_DIR}/lib/${ARCH}/${lib} ]] || error "${lib} for ${ARCH} missing in ${BASE_DIR}"
@@ -51,8 +88,10 @@ install -d "${LIB_DIR}"
 for lib in "${LIBS[@]}"; do
   install -m 0644 "${libs_src}/${lib}" "${LIB_DIR}/"
 done
-echo "${LIB_DIR}" >/etc/ld.so.conf.d/regahss.conf
-ldconfig
+if [[ -z ${EMULATOR} ]]; then
+  echo "${LIB_DIR}" >/etc/ld.so.conf.d/regahss.conf
+  ldconfig
+fi
 
 echo "STEP: installing WebUI files"
 mkdir -p /www
@@ -71,12 +110,12 @@ for hook in hm_startup hm_autoconf; do
 done
 
 echo "STEP: verifying ReGaHss runtime dependencies"
-ldd "${REGA_BIN}"
-if ldd "${REGA_BIN}" | grep -q 'not found'; then
+list_dependencies "${REGA_BIN}"
+if list_dependencies "${REGA_BIN}" | grep -q 'not found'; then
   error "unresolved runtime dependencies of ${REGA_BIN}"
 fi
 # all symbols ReGaHss imports must be provided by the (rebuilt) libraries
-undefined=$(ldd -r "${REGA_BIN}" 2>&1 | grep 'undefined symbol' || true)
+undefined=$(list_dependencies -r "${REGA_BIN}" 2>&1 | grep 'undefined symbol' || true)
 if [[ -n ${undefined} ]]; then
   echo "${undefined}" >&2
   error "${REGA_BIN} has undefined symbols with the ${libs_variant} libraries"
@@ -84,7 +123,7 @@ fi
 
 # (sanitizer instrumented libraries require the ASan runtime to be preloaded,
 # which is not needed for just printing the version)
-version=$(ASAN_OPTIONS=verify_asan_link_order=0:detect_leaks=0 timeout 30 "${REGA_BIN}" -h 2>&1 |
+version=$(ASAN_OPTIONS=verify_asan_link_order=0:detect_leaks=0 timeout 60 ${EMULATOR} "${REGA_BIN}" -h 2>&1 |
   grep -m1 -o 'ReGaHss R[0-9.]*.*' || true)
 [[ -n ${version} ]] || error "${REGA_BIN} -h did not output any version information"
 
@@ -109,6 +148,7 @@ cat >/etc/regahss-test.info <<EOF
 REGA_ARCH=${ARCH}
 REGA_LIBS=${libs_variant}
 REGA_VERSION="${version}"
+REGA_EMULATOR_INFO="${EMULATOR:+$(${EMULATOR} --version | head -n 1)}"
 OPENCCU_BASE_COMMIT=${commit}
 EOF
 echo "installed ${version} from OpenCCU-Base ${commit} (${ARCH}, ${libs_variant} libraries)"

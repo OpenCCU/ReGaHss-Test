@@ -44,6 +44,13 @@ WriteLine((-1.0).Sqrt());
 1024.000000
 -2.000000
 -nan
+---- output [aarch64 arm]
+4.000000
+2.519842
+4.000000
+1024.000000
+-2.000000
+nan
 ----
 
 #### exponential and logarithm

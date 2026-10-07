@@ -15,7 +15,9 @@
 # Build arguments:
 #   BASE_REPO  OpenCCU-Base git repository
 #   BASE_REF   OpenCCU-Base branch, tag or commit SHA to test (default: main)
-#   REGA_ARCH  x86_64-linux-gnu or i686-linux-gnu
+#   REGA_ARCH  x86_64-linux-gnu, i686-linux-gnu, aarch64-linux-gnu or
+#              arm-linux-gnueabihf (the ARM binaries run with the qemu user
+#              mode emulator, prebuilt libraries only)
 #   REF_BASE_REF  OpenCCU-Base ref with a reference ReGaHss for differential
 #              tests of the script corpus (optional)
 #   REGA_LIBS  libXmlRpc/libxmlparser to run ReGaHss with:
@@ -62,6 +64,9 @@ RUN mkdir -p /opt/regahss-libs \
  && if [ "${REGA_LIBS}" = "asan" ] && [ "${REGA_ARCH}" != "x86_64-linux-gnu" ]; then \
       echo "REGA_LIBS=asan is only supported for x86_64-linux-gnu" >&2; exit 1; \
     fi \
+ && case "${REGA_ARCH}" in x86_64-linux-gnu|i686-linux-gnu) ;; *) \
+      echo "REGA_LIBS=${REGA_LIBS} is not supported for ${REGA_ARCH} (prebuilt only)" >&2; exit 1 ;; \
+    esac \
  && packages=(cmake make g++) \
  && if [ "${REGA_ARCH}" = "i686-linux-gnu" ]; then packages+=(g++-i686-linux-gnu libc6-dev-i386-cross); fi \
  && apt-get update \
@@ -71,23 +76,31 @@ RUN mkdir -p /opt/regahss-libs \
 
 # build the preload libraries for the ReGaHss architecture: libfaketime from
 # source (the 32-bit ReGaHss uses the glibc time64 ABI, __clock_gettime64 &
-# co., which is only supported since libfaketime 0.9.13) and liblinebuf (line
-# buffered ReGaHss output, see src/linebuf.c)
+# co., which is only supported since libfaketime 0.9.13), liblinebuf (line
+# buffered ReGaHss output, see src/linebuf.c) and libtimeshift (clock beyond
+# 2038 for the Y2038 tests, see src/timeshift.c)
 FROM node:22-bookworm-slim AS tools
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG LIBFAKETIME_REF=v0.9.13
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-COPY src/linebuf.c /src/linebuf.c
+COPY src/linebuf.c src/timeshift.c /src/
 RUN packages=(ca-certificates git make gcc libc6-dev) \
- && cc=gcc \
- && if [ "${REGA_ARCH}" = "i686-linux-gnu" ]; then packages+=(gcc-multilib); cc="gcc -m32"; fi \
+ && case "${REGA_ARCH}" in \
+      x86_64-linux-gnu) cc=gcc ;; \
+      i686-linux-gnu) packages+=(gcc-multilib); cc="gcc -m32" ;; \
+      aarch64-linux-gnu) packages+=(gcc-aarch64-linux-gnu libc6-dev-arm64-cross); cc=aarch64-linux-gnu-gcc ;; \
+      arm-linux-gnueabihf) packages+=(gcc-arm-linux-gnueabihf libc6-dev-armhf-cross); cc=arm-linux-gnueabihf-gcc ;; \
+      *) echo "unsupported REGA_ARCH ${REGA_ARCH}" >&2; exit 1 ;; \
+    esac \
  && apt-get update \
  && apt-get install -y --no-install-recommends "${packages[@]}" \
  && rm -rf /var/lib/apt/lists/* \
  && git clone -q --depth 1 --branch "${LIBFAKETIME_REF}" https://github.com/wolfcw/libfaketime.git /src/libfaketime \
  && make -C /src/libfaketime/src CC="${cc}" PREFIX=/usr/local all install \
+ && echo "Version ${LIBFAKETIME_REF#v}" >/usr/local/lib/faketime/VERSION \
  && mkdir -p /usr/local/lib/regahss-test \
- && ${cc} -shared -fPIC -O2 -Wall -o /usr/local/lib/regahss-test/liblinebuf.so /src/linebuf.c
+ && ${cc} -shared -fPIC -O2 -Wall -o /usr/local/lib/regahss-test/liblinebuf.so /src/linebuf.c \
+ && ${cc} -shared -fPIC -O2 -Wall -Wno-nonnull-compare -o /usr/local/lib/regahss-test/libtimeshift.so /src/timeshift.c -ldl
 
 # test environment
 FROM node:22-bookworm-slim
@@ -101,7 +114,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Europe/Berlin \
     REGA_BIN=/bin/ReGaHss \
     REGA_LINEBUF_LIB=/usr/local/lib/regahss-test/liblinebuf.so \
-    REGA_FAKETIME_LIB=/usr/local/lib/faketime/libfaketime.so.1
+    REGA_FAKETIME_LIB=/usr/local/lib/faketime/libfaketime.so.1 \
+    REGA_TIMESHIFT_LIB=/usr/local/lib/regahss-test/libtimeshift.so
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN packages=(ca-certificates gdb procps tzdata) \
  && case "${REGA_ARCH}" in \
@@ -109,6 +123,12 @@ RUN packages=(ca-certificates gdb procps tzdata) \
       i686-linux-gnu) \
         dpkg --add-architecture i386 \
         && packages+=(libc6:i386 libstdc++6:i386 libgcc-s1:i386) ;; \
+      aarch64-linux-gnu) \
+        dpkg --add-architecture arm64 \
+        && packages+=(qemu-user-static gdb-multiarch libc6:arm64 libstdc++6:arm64 libgcc-s1:arm64) ;; \
+      arm-linux-gnueabihf) \
+        dpkg --add-architecture armhf \
+        && packages+=(qemu-user-static gdb-multiarch libc6:armhf libstdc++6:armhf libgcc-s1:armhf) ;; \
       *) echo "unsupported REGA_ARCH ${REGA_ARCH}" >&2; exit 1 ;; \
     esac \
  && case "${REGA_LIBS}" in \

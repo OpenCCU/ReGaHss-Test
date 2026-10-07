@@ -19,6 +19,7 @@ const path = require('path');
 const {
     regaLabel,
     regaPreload,
+    regaArch,
     indent,
     initTest,
     cleanupTest,
@@ -28,7 +29,7 @@ const {
     ReGaInstance
 } = require('../lib/helper.js');
 const {
-    parseCorpus, writeCorpus, execScript, scriptVars
+    parseCorpus, writeCorpus, execScript, scriptVars, expectedOutput
 } = require('../lib/corpus.js');
 
 require('should');
@@ -175,11 +176,12 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                             return;
                         }
 
-                        if (testcase.expectedOutput === null) {
+                        const output = expectedOutput(testcase, regaArch);
+                        if (output === null) {
                             throw new Error('no expected output recorded ' + location + ', record it with REGA_CORPUS_RECORD=1');
                         }
 
-                        result.output.should.equal(testcase.expectedOutput, 'output of "' + testcase.name + '" ' + location);
+                        result.output.should.equal(output, 'output of "' + testcase.name + '" ' + location);
                         if (testcase.expectedVars !== null) {
                             scriptVars(result.objects).should.deepEqual(testcase.expectedVars, 'variables of "' + testcase.name + '" ' + location);
                         }

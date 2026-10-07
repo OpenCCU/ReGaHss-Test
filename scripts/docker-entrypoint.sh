@@ -21,8 +21,19 @@ export REGA_BIN=${REGA_BIN:-/bin/ReGaHss}
 # speed of the faked clock for the timer tests (real time for the 32-bit
 # ReGaHss, as libfaketime does not accelerate the waits of its timer thread)
 if [[ -z ${REGA_FAKETIME_RATE:-} ]]; then
-  [[ ${REGA_ARCH:-} == i686-linux-gnu ]] && REGA_FAKETIME_RATE=1 || REGA_FAKETIME_RATE=10
+  case ${REGA_ARCH:-} in
+    i686-linux-gnu | arm-linux-gnueabihf) REGA_FAKETIME_RATE=1 ;;
+    *) REGA_FAKETIME_RATE=10 ;;
+  esac
 fi
+
+# emulator of the ARM binaries (qemu user mode) and the matching debugger
+emulator=""
+gdb=gdb
+case ${REGA_ARCH:-} in
+  aarch64-linux-gnu) emulator=qemu-aarch64-static gdb=gdb-multiarch ;;
+  arm-linux-gnueabihf) emulator=qemu-arm-static gdb=gdb-multiarch ;;
+esac
 export REGA_FAKETIME_RATE
 export REGA_LABEL=${REGA_LABEL:-${REGA_ARCH:-unknown}@${OPENCCU_BASE_COMMIT:0:7}/${REGA_LIBS}}
 
@@ -59,7 +70,7 @@ fi
 if [[ -n ${REGA_REF_BIN:-} ]]; then
   export REGA_DIFF_REPORT=${REGA_DIFF_REPORT:-${RESULTS}/differential.md}
   rm -f "${REGA_DIFF_REPORT}"
-  ref_version=$(LD_LIBRARY_PATH=${REGA_REF_LIB_DIR:-} timeout 30 "${REGA_REF_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || echo unknown)
+  ref_version=$(LD_LIBRARY_PATH=${REGA_REF_LIB_DIR:-} timeout 60 ${emulator} "${REGA_REF_BIN}" -h 2>&1 | grep -m1 -o 'ReGaHss R[0-9.]*.*' || echo unknown)
   ref_version="${ref_version} (OpenCCU-Base $(cat "${REF_DIR}/commit" 2>/dev/null || echo unknown))"
 fi
 
@@ -94,8 +105,11 @@ fi
     echo "| reference ReGaHss | ${ref_version} |"
   fi
   echo "| libXmlRpc/libxmlparser | ${REGA_LIBS} |"
+  if [[ -n ${emulator} ]]; then
+    echo "| emulation | ${REGA_EMULATOR_INFO:-${emulator}} |"
+  fi
   echo "| node.js | $(node --version) |"
-  echo "| libfaketime | $(faketime --version 2>&1 | grep -o 'Version.*' || echo unknown) (clock rate x${REGA_FAKETIME_RATE} for timer tests) |"
+  echo "| libfaketime | $(faketime --version 2>/dev/null | grep -o 'Version.*' || cat /usr/local/lib/faketime/VERSION 2>/dev/null || echo unknown) (clock rate x${REGA_FAKETIME_RATE} for timer tests) |"
   echo "| timezone | ${TZ:-unset} ($(date +%Z)) |"
   echo "| parallel jobs | ${REGA_JOBS:-1} |"
   echo
@@ -135,7 +149,10 @@ rc=$?
 # core dumps of crashed ReGaHss processes (incl. backtraces); the ones of known
 # aborts while stopping ReGaHss (renamed to shutdown-abort.core* by the test
 # harness, see warnings) are reported, but do not fail the test run
-mapfile -t cores < <(find "${REGA_WORK_DIR}" -type f \( -name 'core*' -o -name 'shutdown-abort.core*' \) 2>/dev/null | sort)
+# (with qemu the core dumps of the emulated ReGaHss are named qemu_*.core,
+# core dumps of the emulator itself are useless)
+find "${REGA_WORK_DIR}" -type f -name 'core.qemu*' -delete 2>/dev/null
+mapfile -t cores < <(find "${REGA_WORK_DIR}" -type f \( -name 'core*' -o -name 'qemu_*.core' -o -name 'shutdown-abort.*' \) 2>/dev/null | sort)
 crash_cores=0
 for core in "${cores[@]}"; do
   [[ $(basename "${core}") == shutdown-abort.* ]] || crash_cores=$((crash_cores + 1))
@@ -151,7 +168,7 @@ if [[ ${#cores[@]} -gt 0 ]]; then
       name=$(basename "$(dirname "${core}")")-$(basename "${core}")
       mv "${core}" "${cores_dir}/${name}"
       # (the backtrace of the crashed thread first, then the ones of all threads)
-      gdb -q -batch -ex 'echo crashed thread:\n' -ex 'bt' -ex 'echo \nlibraries:\n' -ex 'info sharedlibrary' \
+      "${gdb}" -q -batch -ex 'echo crashed thread:\n' -ex 'bt' -ex 'echo \nlibraries:\n' -ex 'info sharedlibrary' \
         -ex 'echo \nall threads:\n' -ex 'thread apply all bt' \
         "${REGA_BIN}" "${cores_dir}/${name}" >"${cores_dir}/${name}.txt" 2>&1
       echo "<details><summary>${name}</summary>"

@@ -4,6 +4,7 @@
 const {
     rega,
     regaLabel,
+    regaEmulator,
     indent,
     initTest,
     cleanupTest,
@@ -86,7 +87,8 @@ string build = dom.BuildLabel();
         });
 
         it('should allow to create >65535 objects', async function () {
-            this.timeout(30000);
+            // (CPU bound: takes a multiple of the time when ReGaHss is emulated)
+            this.timeout(regaEmulator ? 300_000 : 30_000);
             const {output, objects} = await rega.exec(`
 integer i = 0;
 object lastsysvar = null;

@@ -33,7 +33,9 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
         it('should log incomplete binrpc message', async function () {
             this.timeout(15000);
             const buf = Buffer.from([0x42, 0x69, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x05, 0x65, 0x76, 0x65, 0x6E, 0x74, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0B]);
-            const logged = waitForRega(/XmlRpcServerConnection::readRequest: EOF while reading request/, {buffered: false});
+            // (depending on the timing of the connection close the server reads
+            // EOF or the connection is reset, e.g. with the emulated ReGaHss)
+            const logged = waitForRega(/XmlRpcServerConnection::readRequest: (EOF while reading request|read error \(error 104\))/, {buffered: false});
             rpcWrite(buf);
             await logged;
         });
