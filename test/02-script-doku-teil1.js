@@ -2,16 +2,8 @@
 /* eslint-disable no-unused-vars, no-useless-escape, camelcase, prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
     rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
     regaLabel,
-    indent,
     initTest,
     cleanupTest
 } = require('../lib/helper.js');

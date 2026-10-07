@@ -1,17 +1,8 @@
 /* global describe  */
-/* eslint-disable no-unused-vars, prefer-arrow-callback, capitalized-comments */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
-    rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
     regaLabel,
-    indent,
     initTest,
     cleanupTest
 } = require('../lib/helper.js');

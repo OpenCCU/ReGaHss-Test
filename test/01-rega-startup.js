@@ -1,19 +1,13 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, prefer-arrow-callback, capitalized-comments */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
     rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
     regaLabel,
     indent,
     initTest,
-    cleanupTest
+    cleanupTest,
+    waitForRega
 } = require('../lib/helper.js');
 
 require('should');
@@ -24,101 +18,73 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
 
     describe('running tests', function () {
         // run tests
-        it('should start TimerSchedulerThread', function (done) {
+        it('should start TimerSchedulerThread', async function () {
             this.timeout(30000);
-            subscribe('rega', /TimerSchedulerThread started/, function () {
-                done();
-            });
+            await waitForRega(/TimerSchedulerThread started/);
         });
 
-        it('should start IseRTPrgThread', function (done) {
+        it('should start IseRTPrgThread', async function () {
             this.timeout(30000);
-            subscribe('rega', /RTPrgThread thread function started/, function () {
-                done();
-            });
+            await waitForRega(/RTPrgThread thread function started/);
         });
 
-        it('should init XmlRpcMethodListDevices', function (done) {
+        it('should init XmlRpcMethodListDevices', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodListDevices/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodListDevices/);
         });
 
-        it('should init XmlRpcMethodNewDevices', function (done) {
+        it('should init XmlRpcMethodNewDevices', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodNewDevices/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodNewDevices/);
         });
 
-        it('should init XmlRpcMethodDeleteDevices', function (done) {
+        it('should init XmlRpcMethodDeleteDevices', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodDeleteDevices/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodDeleteDevices/);
         });
 
-        it('should init XmlRpcMethodReportValueUsage', function (done) {
+        it('should init XmlRpcMethodReportValueUsage', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodReportValueUsage/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodReportValueUsage/);
         });
 
-        it('should init XmlRpcMethodUpdateDevice', function (done) {
+        it('should init XmlRpcMethodUpdateDevice', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodUpdateDevice/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodUpdateDevice/);
         });
 
-        it('should init XmlRpcMethodReplaceDevice', function (done) {
+        it('should init XmlRpcMethodReplaceDevice', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodReplaceDevice/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodReplaceDevice/);
         });
 
-        it('should init XmlRpcMethodSetReadyConfig', function (done) {
+        it('should init XmlRpcMethodSetReadyConfig', async function () {
             this.timeout(30000);
-            subscribe('rega', /Info: InitXmlRpcMethods: XmlRpcMethodSetReadyConfig/, function () {
-                done();
-            });
+            await waitForRega(/Info: InitXmlRpcMethods: XmlRpcMethodSetReadyConfig/);
         });
 
-        it('should load /etc/config/homematic.regadom', function (done) {
+        it('should load homematic.regadom', async function () {
             this.timeout(30000);
-            subscribe('rega', /.*oaded .*homematic\.regadom/, function () {
-                done();
-            });
+            await waitForRega(/.*oaded .*homematic\.regadom/);
         });
 
-        it('should output build label', function (done) {
+        it('should output build label', async function () {
             this.timeout(30000);
-            rega.exec(`
+            const {objects} = await rega.exec(`
 string build = dom.BuildLabel();
-                `, function (error, output, objects) {
-                if (error) {
-                    done(error);
-                } else {
-                    objects.build.should.not.equal('undefined');
-                    done();
-                    console.log(indent(objects.build, 8));
-                }
-            });
+                `);
+            objects.build.should.not.equal('undefined');
+            console.log(indent(objects.build, 8));
         });
 
-        it('should execute /bin/hm_startup', function (done) {
+        it('should execute /bin/hm_startup', async function () {
             this.timeout(30000);
-            subscribe('rega', /Executing \/bin\/hm_startup/, function () {
-                done();
-            });
+            await waitForRega(/Executing \/bin\/hm_startup/);
         });
 
-        it('should allow to create >65535 objects', function (done) {
+        it('should allow to create >65535 objects', async function () {
             this.timeout(30000);
-            rega.exec(`
+            const {output, objects} = await rega.exec(`
 integer i = 0;
 object lastsysvar = null;
 system.MaxIterations(1000000);
@@ -150,15 +116,9 @@ if(i != -1)
   }
 }
 WriteLine(j);
-                `, function (error, output, objects) {
-                if (error) {
-                    done(error);
-                } else {
-                    output.should.equal('600000\r\nXvarX599999\r\n600000\r\n');
-                    done();
-                    console.log(indent(objects.j, 8));
-                }
-            });
+                `);
+            output.should.equal('600000\r\nXvarX599999\r\n600000\r\n');
+            console.log(indent(objects.j, 8));
         });
     });
 

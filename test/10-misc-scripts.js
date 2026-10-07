@@ -1,17 +1,9 @@
 /* global describe, it */
-/* eslint-disable no-unused-vars, camelcase, prefer-arrow-callback, capitalized-comments */
+/* eslint-disable camelcase, prefer-arrow-callback, capitalized-comments */
 
 const {
-    cp,
     rega,
-    subscribe,
-    procs,
-    simSubscriptions,
-    simBuffer,
-    regaSubscriptions,
-    regaBuffer,
     regaLabel,
-    indent,
     initTest,
     cleanupTest
 } = require('../lib/helper.js');
@@ -24,10 +16,6 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
 
     describe('running examples from https://www.homematic-inside.de/tecbase/homematic/scriptlibrary', function () {
         it('testing "tageszeit-in-abschnitte-unterteilen"', function (done) {
-            if (!procs.rega) {
-                return this.skip();
-            }
-
             this.timeout(30000);
             rega.exec(`
 ! Tageszeiten
