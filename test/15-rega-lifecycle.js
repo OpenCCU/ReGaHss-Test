@@ -45,6 +45,32 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
         });
     });
 
+    describe('immediate restart', function () {
+        let instance = null;
+
+        step('should start ReGaHss and answer a request', async function () {
+            this.timeout(60_000);
+            instance = new ReGaInstance({name: 'restart'});
+            await instance.start({testFile: __filename});
+            await instance.ready();
+            const {output} = await instance.exec('WriteLine("first");');
+            output.should.equal('first\r\n');
+        });
+
+        step('should bind its ports again immediately after being killed', async function () {
+            this.timeout(60_000);
+            await instance.stop({signal: 'SIGKILL'});
+            // (ReGaHss <= R1.00.0388.0252 failed here, as the HTTP port of the
+            // previous process was still in use (TIME_WAIT without SO_REUSEADDR))
+            instance = new ReGaInstance({name: 'restart'});
+            await instance.start({testFile: __filename});
+            await instance.ready();
+            const {output} = await instance.exec('WriteLine("second");');
+            output.should.equal('second\r\n');
+            await instance.stop();
+        });
+    });
+
     describe('crash detection of the test harness', function () {
         let instance = null;
 
