@@ -79,7 +79,10 @@ string build = dom.BuildLabel();
 
         it('should execute /bin/hm_startup', async function () {
             this.timeout(30000);
-            await waitForRega(/Executing \/bin\/hm_startup/);
+            // (ReGaHss writes its own "Executing /bin/hm_startup in forked child"
+            // line in several pieces, which other log output can interleave with,
+            // whereas the output of the hook script is written at once)
+            await waitForRega(/\/bin\/hm_startup executed/);
         });
 
         it('should allow to create >65535 objects', async function () {

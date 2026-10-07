@@ -73,7 +73,7 @@ foreach (id, dom.GetObject(ID_INTERFACES).EnumUsedIDs()) {
 ---- output
 BidCos-RF xmlrpc_bin BidCos-RF
 VirtualDevices xmlrpc Virtual Devices
-HmIP-RF  HmIP-RF
+HmIP-RF xmlrpc HmIP-RF
 CUxD  CUxD
 ----
 
