@@ -40,7 +40,7 @@ docker run --rm --init -v "$PWD/results:/results" regahss-test:asan
 docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js test/13-fixed-bugs.js
 
 # additionally compare the results of the script corpus with the ReGaHss of
-# another OpenCCU-Base revision (results/corpus-diff.md, informational)
+# another OpenCCU-Base revision (results/differential.md, informational)
 docker build -t regahss-test --build-arg REF_BASE_REF=<sha> .
 
 # show the ReGaHss output while running the tests
