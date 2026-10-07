@@ -27,7 +27,7 @@
 #                        (x86_64-linux-gnu only)
 
 # fetch the required parts of OpenCCU-Base
-FROM node:22-bookworm-slim AS openccu-base
+FROM node:25-bookworm-slim AS openccu-base
 ARG BASE_REPO=https://github.com/OpenCCU/OpenCCU-Base.git
 ARG BASE_REF=main
 ARG REGA_ARCH=x86_64-linux-gnu
@@ -53,7 +53,7 @@ RUN mkdir -p /opt/regahss-ref \
     fi
 
 # build libXmlRpc/libxmlparser from the OpenCCU-Base sources (if requested)
-FROM node:22-bookworm-slim AS libs
+FROM node:25-bookworm-slim AS libs
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG REGA_LIBS=prebuilt
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -79,7 +79,7 @@ RUN mkdir -p /opt/regahss-libs \
 # co., which is only supported since libfaketime 0.9.13), liblinebuf (line
 # buffered ReGaHss output, see src/linebuf.c) and libtimeshift (clock beyond
 # 2038 for the Y2038 tests, see src/timeshift.c)
-FROM node:22-bookworm-slim AS tools
+FROM node:25-bookworm-slim AS tools
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG LIBFAKETIME_REF=v0.9.13
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -103,7 +103,7 @@ RUN packages=(ca-certificates git make gcc libc6-dev) \
  && ${cc} -shared -fPIC -O2 -Wall -Wno-nonnull-compare -o /usr/local/lib/regahss-test/libtimeshift.so /src/timeshift.c -ldl
 
 # test environment
-FROM node:22-bookworm-slim
+FROM node:25-bookworm-slim
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG REGA_LIBS=prebuilt
 ARG GCOVR_VERSION=8.6
