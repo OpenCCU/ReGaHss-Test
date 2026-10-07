@@ -5,6 +5,7 @@ const {promisify} = require('util');
 
 const {
     regaLabel,
+    regaEmulator,
     initTest,
     cleanupTest,
     rpcCall,
@@ -13,6 +14,9 @@ const {
 } = require('../lib/helper.js');
 
 require('should');
+
+// (emulated ReGaHss notices the closed connection later)
+const slowdown = regaEmulator ? 5 : 1;
 
 describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
     // initialize test environment
@@ -31,7 +35,7 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
         });
 
         it('should log incomplete binrpc message', async function () {
-            this.timeout(15000);
+            this.timeout(15000 * slowdown);
             const buf = Buffer.from([0x42, 0x69, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x05, 0x65, 0x76, 0x65, 0x6E, 0x74, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x0B]);
             // (depending on the timing of the connection close the server reads
             // EOF or the connection is reset, e.g. with the emulated ReGaHss)
