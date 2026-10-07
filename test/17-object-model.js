@@ -201,7 +201,7 @@ dom.GetObject("OM String").State("Grüße");
                 }));
             });
 
-            it('should limit values to the range of number variables', async function () {
+            it('should not limit values to the range of number variables', async function () {
                 await rega.exec('dom.GetObject("OM Number").State(100);');
                 const above = await value('OM Number');
                 await rega.exec('dom.GetObject("OM Number").State(-100);');
