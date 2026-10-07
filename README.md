@@ -10,7 +10,9 @@ This repository performs automated daily system tests of `ReGaHss` - the HomeMat
 * The required parts of an OpenCCU-Base revision (`bin/<arch>/ReGaHss`, `lib/<arch>/libXmlRpc.so`, `lib/<arch>/libxmlparser.so`, `www/` and the CMake build system plus library sources) are fetched via a shallow sparse checkout (`scripts/fetch-openccu-base.sh`).
 * ReGaHss is either run with the prebuilt `libXmlRpc`/`libxmlparser` of OpenCCU-Base or with these libraries rebuilt from the OpenCCU-Base sources (`scripts/build-libs.sh`), optionally instrumented with AddressSanitizer/UndefinedBehaviorSanitizer and gcov coverage.
 * ReGaHss and its runtime environment (`rega.conf`, `InterfacesList.xml`, the prebuilt test `homematic.regadom`, dummy hook scripts) are installed into a disposable docker image (`scripts/install-regahss.sh`).
-* Each test file (`test/*.js`) starts its own ReGaHss process (optionally together with the [hm-simulator](https://github.com/hobbyquaker/hm-simulator) rfd simulation or under `faketime`) and interacts with it via the ReGa script interface (port 8183), its XML-RPC/BIN-RPC server (port 31999) and its log output.
+* Each test file (`test/*.js`) starts its own ReGaHss process (optionally together with the [hm-simulator](https://github.com/hobbyquaker/hm-simulator) rfd simulation or under [libfaketime](https://github.com/wolfcw/libfaketime)) and interacts with it via the ReGa script interface, its XML-RPC/BIN-RPC server and its log output.
+* Every ReGaHss instance runs with its own working directory (`rega.conf`, `homematic.regadom`, `InterfacesList.xml`) and its own ports (`lib/rega-instance.js`), so that the test files can be run in parallel worker processes (`REGA_JOBS`).
+* ReGaHss is started directly (without wrapper processes), so the test harness notices crashes immediately: pending tests fail at once with the exit signal and the last log lines of ReGaHss instead of running into timeouts.
 
 ## Running the tests
 
@@ -20,9 +22,13 @@ This repository performs automated daily system tests of `ReGaHss` - the HomeMat
 # build the test image for the current OpenCCU-Base main branch
 docker build -t regahss-test --build-arg REGA_ARCH=x86_64-linux-gnu --build-arg BASE_REF=main .
 
-# run the complete test suite (takes ~30 minutes due to the real-time timer tests),
-# a summary (results/summary.md) and all reports are written to results/
+# run the complete test suite, a summary (results/summary.md), a JUnit report
+# (results/junit.xml) and all other reports are written to results/
 docker run --rm --init -v "$PWD/results:/results" regahss-test
+
+# run the test files in 4 parallel worker processes and the timer tests in
+# real time (default: 10 times accelerated clock)
+docker run --rm --init -e REGA_JOBS=4 -e REGA_FAKETIME_RATE=1 -v "$PWD/results:/results" regahss-test
 
 # test ReGaHss with sanitizer instrumented libXmlRpc/libxmlparser built from source
 # (results/sanitizer: ASan/UBSan reports, results/coverage: gcov line coverage)
@@ -45,15 +51,17 @@ Build arguments:
 | `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
 | `REGA_LIBS` | `prebuilt` | `libXmlRpc`/`libxmlparser` to run ReGaHss with: `prebuilt` (shipped with OpenCCU-Base), `source` (release build from the OpenCCU-Base sources, incl. informational `abidiff` report vs. the prebuilt libraries) or `asan` (debug build with ASan/UBSan and gcov coverage, `x86_64-linux-gnu` only) |
 
-For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup, the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
+For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup (the ASan allocator calls `clock_gettime()` with its lock held, which triggers the lazy initialization of libfaketime, which in turn allocates memory), the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
 
-The output of every ReGaHss instance started by the tests is kept in `results/logs.tar.gz`.
+The output of every ReGaHss instance started by the tests is kept in `results/logs.tar.gz`. If ReGaHss crashes with a core dump (requires `docker run --ulimit core=-1` and a relative `kernel.core_pattern` of the host such as `core.%e.%p`), the core dumps are moved to `results/cores` together with a backtrace (`gdb`) and the ReGaHss binary, and the test run fails.
+
+The timer tests (`test/07*-timer-faketime-*.js`) run with a 10 times accelerated faked clock by default (`REGA_FAKETIME_RATE`), which reduces the runtime of the whole test suite from ~28 to ~3 minutes. For the 32-bit ReGaHss (`i686-linux-gnu`) they run in real time, as libfaketime does not accelerate the waits of its timer thread (glibc time64 ABI) and the timers would fire too late. The nightly CI run executes them in real time on all architectures (`REGA_FAKETIME_RATE=1`). Real time runs benefit from parallel execution (`REGA_JOBS=4`), as the timer tests are split into four files.
 
 Images built by the CI for the `master` branch (prebuilt libraries) are published as `ghcr.io/openccu/regahss-test:<arch>-<main|release|commit>`.
 
 ### Natively (disposable environments only)
 
-`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, `expect` (for `unbuffer`), [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI) and the timezone `Europe/Berlin`:
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for `i686-linux-gnu` build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`):
 
 ```bash
 scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
@@ -71,12 +79,50 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 |---|---|---|
 | `REGA_BIN` | `/bin/ReGaHss` | ReGaHss binary to test |
 | `REGA_LABEL` | `<arch>@<commit>/<libs>` | label shown in the test titles |
+| `REGA_JOBS` | `1` | number of test files to run in parallel (mocha `--parallel`) |
+| `REGA_FAKETIME_RATE` | `10` (`1` for i686) | speed of the faked clock for the timer tests (`1`: real time) |
 | `REGA_PRELOAD` | – | libraries to preload into the ReGaHss process only (set automatically for `asan`) |
 | `REGA_STOP_SIGNAL` | `KILL` | signal to stop ReGaHss with after each test file (`TERM` for `asan`) |
 | `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
-| `REGA_RESULTS_DIR` | `/results` | directory for the summary, ReGaHss logs, sanitizer reports and coverage (docker image) |
+| `REGA_JUNIT_FILE` | – | file to write a JUnit XML report to (`results/junit.xml` in the docker image) |
+| `REGA_WORK_DIR` | `$TMPDIR/regahss-test` | base directory of the working directories of the ReGaHss instances |
+| `REGA_PORT_BASE` | `20000` | first port used by the ReGaHss instances (10 ports per parallel worker) |
+| `REGA_LINEBUF_LIB` | auto | preload library making the ReGaHss output line buffered (`src/linebuf.c` or coreutils' `libstdbuf.so`) |
+| `REGA_FAKETIME_LIB` | auto | `libfaketime.so.1` to fake the time of ReGaHss with |
+| `REGA_RESULTS_DIR` | `/results` | directory for the summary, JUnit report, ReGaHss logs, core dumps, sanitizer reports and coverage (docker image) |
 | `REGA_OUTPUT` | – | set to `1` to show the ReGaHss output |
 | `SIM_OUTPUT` | – | set to `1` to show the hm-simulator output |
+
+### Writing tests
+
+Each test file starts and stops its ReGaHss instance via `initTest()` and `cleanupTest()` of `lib/helper.js`. Tests use async functions and fail immediately if ReGaHss crashes:
+
+```js
+const {rega, regaLabel, initTest, cleanupTest, waitForRega, waitForSim} = require('../lib/helper.js');
+
+describe('Running my-test.js [' + regaLabel + ']', function () {
+    // start ReGaHss (options: sim, faketime, rate, rpc, nocopy)
+    initTest({sim: true});
+
+    describe('running tests', function () {
+        it('should execute a script', async function () {
+            const {output, objects} = await rega.exec('string s = "hello"; WriteLine(s);');
+            output.should.equal('hello\r\n');
+            objects.s.should.equal('hello');
+        });
+
+        it('should trigger a program', async function () {
+            // wait for log output caused by the script (not for earlier lines)
+            await Promise.all([
+                waitForSim(/setValue rfd BidCoS-RF:12 PRESS_LONG true/, {buffered: false}),
+                rega.exec('dom.GetObject(1237).State(true);')
+            ]);
+        });
+    });
+
+    cleanupTest();
+});
+```
 
 ## Continuous integration
 
@@ -85,7 +131,7 @@ The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and 
 * `main` - the current HEAD of OpenCCU-Base and
 * `release` - the OpenCCU-Base revision OpenCCU currently builds its firmware with (`OPENCCU_BASE_VERSION` in [openccu-base.mk](https://github.com/OpenCCU/OpenCCU/blob/master/buildroot-external/package/openccu-base/openccu-base.mk)),
 
-whereas identical revisions are only tested once. Each revision is tested with the prebuilt and the source built libraries on both architectures plus the `asan` variant on `x86_64-linux-gnu`. Every test job adds a summary (versions, ABI changes, sanitizer reports, library coverage) to the GitHub job summary and uploads all results as artifact. A manual run (`workflow_dispatch`) allows to test an additional OpenCCU-Base ref (`base_ref`) and to additionally run the legacy tests against the binaries of the old [OCCU](https://github.com/OpenCCU/occu) repository (`legacy_occu`, see `legacy/`).
+whereas identical revisions are only tested once. Each revision is tested with the prebuilt and the source built libraries on both architectures plus the `asan` variant on `x86_64-linux-gnu`. Every test job adds a summary (versions, results per test file and failed tests, core dumps, ABI changes, sanitizer reports, library coverage) to the GitHub job summary and uploads all results (incl. JUnit report, ReGaHss logs and core dumps) as artifact. The test files run in four parallel worker processes and the timer tests with a 10 times accelerated clock (x86_64), the nightly run executes them in real time. A manual run (`workflow_dispatch`) allows to test an additional OpenCCU-Base ref (`base_ref`) and to additionally run the legacy tests against the binaries of the old [OCCU](https://github.com/OpenCCU/occu) repository (`legacy_occu`, see `legacy/`).
 
 ### Testing OpenCCU-Base pull requests
 
@@ -153,7 +199,7 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 
 * **Phase 0/1** (done): pinned dependencies, node.js 22, docker based test environment, switch from OCCU to OpenCCU-Base
 * **Phase 2** (done): build `libXmlRpc`/`libxmlparser` from OpenCCU-Base sources and test ReGaHss against them (incl. ASan/UBSan builds, ABI checks via `abidiff`, gcov coverage), reusable workflow to test OpenCCU-Base pull requests
-* **Phase 3**: test harness rework (crash detection, per-instance environments, parallel execution, accelerated faketime timer tests, JUnit reports, log artifacts)
+* **Phase 3** (done): test harness rework (`ReGaInstance` with per-instance working directories/ports, parallel execution, crash detection, graceful shutdown tests, own script/HTTP client instead of `request`/`homematic-rega`, accelerated faketime timer tests, JUnit reports, core dumps, log artifacts)
 * **Phase 4**: broader test coverage (data driven script test corpus, differential tests against previous releases, object model/persistence tests, extended rfd/HmIP/VirtualDevices simulator)
 * **Phase 5**: aarch64/armhf via QEMU, Y2038 tests on 32-bit platforms, XML-RPC/HTTP fuzzing, long-running stability tests
 
