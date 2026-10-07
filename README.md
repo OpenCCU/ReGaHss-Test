@@ -51,7 +51,7 @@ Build arguments:
 
 | Argument | Default | Description |
 |---|---|---|
-| `REGA_ARCH` | `x86_64-linux-gnu` | ReGaHss architecture to test (`x86_64-linux-gnu` or `i686-linux-gnu`) |
+| `REGA_ARCH` | `x86_64-linux-gnu` | ReGaHss architecture to test: `x86_64-linux-gnu`, `i686-linux-gnu`, `aarch64-linux-gnu` or `arm-linux-gnueabihf` (the ARM binaries run with the qemu user mode emulator, prebuilt libraries only) |
 | `BASE_REF` | `main` | OpenCCU-Base branch, tag or commit SHA to take ReGaHss from |
 | `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
 | `REF_BASE_REF` | – | OpenCCU-Base revision with a reference ReGaHss for differential tests of the script corpus (the CI uses the revision before the last change of the ReGaHss binary) |
@@ -63,13 +63,17 @@ ReGaHss sporadically aborts when it is stopped with `SIGTERM` (`terminate called
 
 The output of every ReGaHss instance started by the tests is kept in `results/logs.tar.gz`. If ReGaHss crashes with a core dump (requires `docker run --ulimit core=-1` and a relative `kernel.core_pattern` of the host such as `core.%e.%p`), the core dumps are moved to `results/cores` together with a backtrace (`gdb`) and the ReGaHss binary, and the test run fails.
 
-The timer tests (`test/07*-timer-faketime-*.js`) run with a 10 times accelerated faked clock by default (`REGA_FAKETIME_RATE`), which reduces the runtime of the whole test suite from ~28 to ~3 minutes. For the 32-bit ReGaHss (`i686-linux-gnu`) they run in real time, as libfaketime does not accelerate the waits of its timer thread (glibc time64 ABI) and the timers would fire too late. The nightly CI run executes them in real time on all architectures (`REGA_FAKETIME_RATE=1`). Real time runs benefit from parallel execution (`REGA_JOBS=4`), as the timer tests are split into four files.
+The timer tests (`test/07*-timer-faketime-*.js`) run with a 10 times accelerated faked clock by default (`REGA_FAKETIME_RATE`), which reduces the runtime of the whole test suite from ~28 to ~3 minutes. For the 32-bit ReGaHss (`i686-linux-gnu`, `arm-linux-gnueabihf`) they run in real time, as libfaketime does not accelerate the waits of its timer thread (glibc time64 ABI) and the timers would fire too late. The nightly CI run executes them in real time on all architectures (`REGA_FAKETIME_RATE=1`). Real time runs benefit from parallel execution (`REGA_JOBS=4`), as the timer tests are split into four files.
+
+### Other architectures (aarch64/armhf)
+
+The ReGaHss binaries of OpenCCU-Base for `aarch64-linux-gnu` and `arm-linux-gnueabihf` are tested with the [qemu](https://www.qemu.org/) user mode emulator (`qemu-user-static`). `ReGaInstance` detects the architecture from the ELF header and runs a binary of a foreign architecture through the matching emulator (`REGA_EMULATOR` overrides it, `none` disables it); the preload libraries (line buffering, libfaketime) are built for the architecture of ReGaHss and passed to the emulated process. The docker image installs `qemu-user-static` and the runtime libraries of the architecture; only the prebuilt libraries are supported for the ARM architectures. Emulated runs are several times slower, so the timeouts of the tests are scaled accordingly.
 
 Images built by the CI for the `master` branch (prebuilt libraries) are published as `ghcr.io/openccu/regahss-test:<arch>-<main|release|commit>`.
 
 ### Natively (disposable environments only)
 
-`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for `i686-linux-gnu` build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`):
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for the other architectures build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`, or with the cross compiler of the target architecture). The ARM binaries additionally need `qemu-user-static` and the runtime libraries of their architecture. The Y2038 tests use `src/timeshift.c` (`REGA_TIMESHIFT_LIB`):
 
 ```bash
 scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
@@ -88,7 +92,13 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_BIN` | `/bin/ReGaHss` | ReGaHss binary to test |
 | `REGA_LABEL` | `<arch>@<commit>/<libs>` | label shown in the test titles |
 | `REGA_JOBS` | `1` | number of test files to run in parallel (mocha `--parallel`) |
-| `REGA_FAKETIME_RATE` | `10` (`1` for i686) | speed of the faked clock for the timer tests (`1`: real time) |
+| `REGA_FAKETIME_RATE` | `10` (`1` for 32-bit) | speed of the faked clock for the timer tests (`1`: real time) |
+| `REGA_EMULATOR` | auto | emulator to run ReGaHss with (qemu user mode for foreign architectures, `none` to force native execution) |
+| `REGA_TIMESHIFT_LIB` | auto | preload library shifting the realtime clock (`src/timeshift.c`, used by the Y2038 tests beyond 2038 on 32-bit platforms) |
+| `REGA_FUZZ_ITERATIONS` | `200` | number of fuzzing inputs per interface (`test/21-fuzzing.js`) |
+| `REGA_FUZZ_SEED` | `1` | seed of the fuzzing inputs (reproducible) |
+| `REGA_FUZZ_DIR` | – | directory to save the last fuzzing inputs to if ReGaHss crashes (for reproduction) |
+| `REGA_SOAK_SECONDS` | `30` | duration of the stability/soak test (`test/22-stability.js`) |
 | `REGA_PRELOAD` | – | libraries to preload into the ReGaHss process only (set automatically for `asan`) |
 | `REGA_STOP_SIGNAL` | `KILL` | signal to stop ReGaHss with after each test file (`TERM` for `asan`) |
 | `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
@@ -178,14 +188,28 @@ await rega.exec(programScript({
 }));
 ```
 
+### Fuzzing
+
+`lib/fuzzer.js` generates deterministic (seeded) inputs for the interfaces of ReGaHss — BIN-RPC and XML-RPC requests to its RPC server (`libXmlRpc`/`libxmlparser`), HTTP requests to its web server and ReGa scripts — from valid via slightly broken to heavily byte-mutated. `test/21-fuzzing.js` sends them to a running ReGaHss and checks after every batch that it is still alive and answers on both servers; a crash is detected immediately and the last inputs are saved for reproduction (`REGA_FUZZ_DIR`). With the sanitizer instrumented libraries (`asan`) memory errors in the libraries are reported as well. The same seed always produces the same inputs (`REGA_FUZZ_SEED`), so a finding is reproducible.
+
+The fuzzer immediately found an unbounded recursion in `libXmlRpc`: a `system.multicall` which contains another `system.multicall` makes `XmlRpcServerConnection::executeMulticall()` recurse until the stack is exhausted and ReGaHss crashes (`SIGSEGV`), reachable unauthenticated via the RPC port ([OpenCCU/OpenCCU#4384](https://github.com/OpenCCU/OpenCCU/issues/4384)). `test/21-fuzzing.js` therefore fails until ReGaHss is fixed.
+
+### Year 2038
+
+`test/20-y2038.js` starts ReGaHss shortly before 2038-01-19 03:14:07 UTC (2³¹ seconds since the epoch, the overflow of a signed 32-bit `time_t`) and checks that time modules, programs, timestamps of system variables, the communication with the interfaces and the persistence keep working past the overflow — relevant for the 32-bit platforms (`i686`, `armhf`), whose ReGaHss is built for the 64-bit `time_t` of the glibc time64 ABI. As libfaketime keeps the faked time in a 32-bit `time_t` for 32-bit programs and cannot fake a time beyond 2038, the realtime clock is shifted with `src/timeshift.c` instead (the monotonic clock is left untouched and absolute realtime timeouts are shifted back, so waits still take as long as intended).
+
+### Stability
+
+`test/22-stability.js` is a soak test: it executes scripts, sends device events and lets a program run for `REGA_SOAK_SECONDS` while sampling the resident memory, the number of threads and open file descriptors of ReGaHss (`ReGaInstance.resourceUsage()`), and checks that ReGaHss stays responsive and does not leak. The nightly CI run uses a longer duration.
+
 ## Continuous integration
 
-The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and nightly. It tests the ReGaHss binaries for `x86_64-linux-gnu` and `i686-linux-gnu` of
+The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and nightly. It tests the ReGaHss binaries for `x86_64-linux-gnu`, `i686-linux-gnu`, `aarch64-linux-gnu` and `arm-linux-gnueabihf` (the ARM architectures with qemu) of
 
 * `main` - the current HEAD of OpenCCU-Base and
 * `release` - the OpenCCU-Base revision OpenCCU currently builds its firmware with (`OPENCCU_BASE_VERSION` in [openccu-base.mk](https://github.com/OpenCCU/OpenCCU/blob/master/buildroot-external/package/openccu-base/openccu-base.mk)),
 
-whereas identical revisions are only tested once. Each revision is tested with the prebuilt and the source built libraries on both architectures plus the `asan` variant on `x86_64-linux-gnu`. Every test job adds a summary (versions, results per test file and failed tests, core dumps, ABI changes, sanitizer reports, library coverage) to the GitHub job summary and uploads all results (incl. JUnit report, ReGaHss logs and core dumps) as artifact. The test files run in four parallel worker processes and the timer tests with a 10 times accelerated clock (x86_64), the nightly run executes them in real time. A manual run (`workflow_dispatch`) allows to test an additional OpenCCU-Base ref (`base_ref`) and to additionally run the legacy tests against the binaries of the old [OCCU](https://github.com/OpenCCU/occu) repository (`legacy_occu`, see `legacy/`).
+whereas identical revisions are only tested once. Each revision is tested with the prebuilt libraries on all four architectures, the source built libraries on `x86_64-linux-gnu`/`i686-linux-gnu` and the `asan` variant on `x86_64-linux-gnu`. Every test job adds a summary (versions, results per test file and failed tests, core dumps, ABI changes, sanitizer reports, library coverage) to the GitHub job summary and uploads all results (incl. JUnit report, ReGaHss logs and core dumps) as artifact. The test files run in four parallel worker processes and the timer tests with a 10 times accelerated clock (64-bit), the nightly run executes them in real time and fuzzes/soaks more thoroughly. A manual run (`workflow_dispatch`) allows to test an additional OpenCCU-Base ref (`base_ref`) and to additionally run the legacy tests against the binaries of the old [OCCU](https://github.com/OpenCCU/occu) repository (`legacy_occu`, see `legacy/`).
 
 ### Testing OpenCCU-Base pull requests
 
@@ -255,7 +279,7 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 * **Phase 2** (done): build `libXmlRpc`/`libxmlparser` from OpenCCU-Base sources and test ReGaHss against them (incl. ASan/UBSan builds, ABI checks via `abidiff`, gcov coverage), reusable workflow to test OpenCCU-Base pull requests
 * **Phase 3** (done): test harness rework (`ReGaInstance` with per-instance working directories/ports, parallel execution, crash detection, graceful shutdown tests, own script/HTTP client instead of `request`/`homematic-rega`, accelerated faketime timer tests, JUnit reports, core dumps, log artifacts)
 * **Phase 4** (done): broader test coverage (data driven script test corpus with record mode, differential tests against the previous ReGaHss release, object model/persistence round trip tests, own BidCos-RF/HmIP-RF/VirtualDevices interface simulator with device lifecycle and RPC tests, program/time module scenarios incl. astro time modules at other locations)
-* **Phase 5**: aarch64/armhf via QEMU, Y2038 tests on 32-bit platforms, XML-RPC/HTTP fuzzing, long-running stability tests
+* **Phase 5** (done): aarch64/armhf via QEMU (`qemu-user-static`), Y2038 tests on the 32-bit platforms (`src/timeshift.c`), seeded XML-RPC/BIN-RPC/HTTP/script fuzzing (`lib/fuzzer.js`, found [OpenCCU/OpenCCU#4384](https://github.com/OpenCCU/OpenCCU/issues/4384)), long-running stability/memory soak tests
 
 ## Links
 

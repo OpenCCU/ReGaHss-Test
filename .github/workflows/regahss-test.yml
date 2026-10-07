@@ -66,6 +66,14 @@ on:
         description: 'number of test files to run in parallel'
         type: string
         default: '4'
+      fuzz_iterations:
+        description: 'number of fuzzing inputs per interface (test/21-fuzzing.js)'
+        type: string
+        default: ''
+      soak_seconds:
+        description: 'duration of the stability/soak test in seconds (test/22-stability.js)'
+        type: string
+        default: ''
       debug:
         description: 'enter remote debug environment after the tests'
         type: boolean
@@ -114,10 +122,12 @@ jobs:
           REGA_LABEL: ${{ inputs.arch }}@${{ inputs.base_name || inputs.base_ref }}/${{ inputs.libs }}
           REGA_FAKETIME_RATE: ${{ inputs.faketime_rate }}
           REGA_JOBS: ${{ inputs.jobs }}
+          REGA_FUZZ_ITERATIONS: ${{ inputs.fuzz_iterations }}
+          REGA_SOAK_SECONDS: ${{ inputs.soak_seconds }}
         run: |
           mkdir -p results
           docker run --rm --init --ulimit core=-1 \
-            -e REGA_LABEL -e REGA_FAKETIME_RATE -e REGA_JOBS \
+            -e REGA_LABEL -e REGA_FAKETIME_RATE -e REGA_JOBS -e REGA_FUZZ_ITERATIONS -e REGA_SOAK_SECONDS \
             -v "${PWD}/results:/results" regahss-test:ci
 
       - name: job summary

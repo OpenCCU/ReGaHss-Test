@@ -116,6 +116,9 @@ jobs:
       ref_base_ref: ${{ matrix.libs == 'prebuilt' && matrix.ref_sha || '' }}
       # (the nightly run executes the timer tests in real time)
       faketime_rate: ${{ inputs.faketime_rate || (github.event_name == 'schedule' && '1') || '' }}
+      # (the nightly run fuzzes and soaks more thoroughly)
+      fuzz_iterations: ${{ github.event_name == 'schedule' && '2000' || '' }}
+      soak_seconds: ${{ github.event_name == 'schedule' && '300' || '' }}
       debug: ${{ inputs.debug == true }}
 
   publish:
