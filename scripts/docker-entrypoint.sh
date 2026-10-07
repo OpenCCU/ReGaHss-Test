@@ -132,11 +132,14 @@ if [[ ${#cores[@]} -gt 0 ]]; then
     for core in "${cores[@]}"; do
       name=$(basename "$(dirname "${core}")")-$(basename "${core}")
       mv "${core}" "${cores_dir}/${name}"
-      gdb -q -batch -ex 'info sharedlibrary' -ex 'thread apply all bt' "${REGA_BIN}" "${cores_dir}/${name}" >"${cores_dir}/${name}.txt" 2>&1
+      # (the backtrace of the crashed thread first, then the ones of all threads)
+      gdb -q -batch -ex 'echo crashed thread:\n' -ex 'bt' -ex 'echo \nlibraries:\n' -ex 'info sharedlibrary' \
+        -ex 'echo \nall threads:\n' -ex 'thread apply all bt' \
+        "${REGA_BIN}" "${cores_dir}/${name}" >"${cores_dir}/${name}.txt" 2>&1
       echo "<details><summary>${name}</summary>"
       echo
       echo '```'
-      grep -v '^\[New LWP' "${cores_dir}/${name}.txt" | head -n 80
+      grep -v '^\[New LWP' "${cores_dir}/${name}.txt" | sed '/^libraries:$/q' | head -n 60
       echo '```'
       echo "</details>"
       echo
@@ -238,6 +241,10 @@ fi
 if [[ -d ${REGA_LOG_DIR} ]]; then
   tar -C "$(dirname "${REGA_LOG_DIR}")" -czf "${REGA_LOG_DIR}.tar.gz" "$(basename "${REGA_LOG_DIR}")" && rm -rf "${REGA_LOG_DIR}"
 fi
+
+# (the results are written as root, but uploaded by the user of the CI
+# runner, e.g. core dumps are only readable by their owner)
+chmod -R a+rX "${RESULTS}" || true
 
 echo
 cat "${summary}"
