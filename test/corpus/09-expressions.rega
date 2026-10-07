@@ -1,0 +1,123 @@
+!! Expression parsing: nested method calls and operator precedence
+
+#### concatenation after a method call
+string s = "abcdef";
+WriteLine("x" # s.Substr(1, 2) # "|");
+---- output
+xbc|
+----
+
+#### method call with a method call as argument
+string s = "abcdef";
+WriteLine(s.Substr(s.Find("c"), 2));
+WriteLine("x" # s.Substr(s.Find("c"), 2) # "|");
+---- output
+cd
+xcd|
+----
+
+#### method chain on a nested call
+object v = dom.GetObject("VarBool1");
+WriteLine(dom.GetObject(v.ID()).Name());
+---- output
+VarBool1
+---- errors
+ScriptRuntimeError: object v = dom.GetObject("VarBool1");
+----
+
+#### concatenation with a method chain on a nested call
+object v = dom.GetObject("VarBool1");
+WriteLine("x" # dom.GetObject(v.ID()).Name() # "|");
+---- output
+x
+---- errors
+ScriptRuntimeError: object v = dom.GetObject("VarBool1");
+----
+
+#### concatenation with a nested call
+object v = dom.GetObject("VarBool1");
+Write(dom.GetObject(v.ID()) # "|");
+---- output
+null\c
+----
+
+#### concatenation with a nested call inside foreach
+object v = dom.GetObject("VarBool1");
+string name;
+foreach (name, "a\tb") {
+  Write(dom.GetObject(v.ID()) # "|");
+}
+---- output
+nullnull\c
+----
+
+#### nested call as argument followed by concatenation
+string s = "abcdef";
+Write(s.Find(s.Substr(2, 1)) # "|");
+---- output
+2|\c
+----
+
+#### assignment of a nested call with concatenation
+string s = "abcdef";
+var n = s.Find(s.Substr(2, 1)) # "|";
+WriteLine(n);
+---- output
+2|
+----
+
+#### DeleteObject with a nested call and concatenation
+object a = dom.CreateObject(OT_VARDP, "ExprTempVar");
+Write(dom.DeleteObject(a.ID()) # "|");
+WriteLine("");
+WriteLine(dom.GetObject("ExprTempVar"));
+object b = dom.GetObject("ExprTempVar");
+if (b) { dom.DeleteObject(b); }
+---- output
+false
+ExprTempVar
+----
+
+#### DeleteObject with a nested call assigned to a variable
+object a = dom.CreateObject(OT_VARDP, "ExprTempVar2");
+var r = dom.DeleteObject(a.ID());
+WriteLine(r # "|" # dom.GetObject("ExprTempVar2"));
+---- output
+true|null
+----
+
+#### precedence of concatenation and arithmetic
+WriteLine(1 + 2 # 3);
+WriteLine((1 + 2) # 3);
+WriteLine(2 * 3 # 4);
+WriteLine("a" # 1 + 2);
+---- output
+24
+33
+2
+a3
+----
+
+#### precedence of comparison and logical operators
+WriteLine(1 < 2 && 3 < 4);
+WriteLine(1 == 1 || 1 == 2 && false);
+WriteLine(!1 == 0);
+---- output
+false
+true
+true
+----
+
+#### duplicate object names
+object a = dom.CreateObject(OT_VARDP, "ExprDup");
+object b = dom.CreateObject(OT_VARDP, "ExprDup");
+WriteLine(a.ID() == b.ID());
+WriteLine(dom.GetObject("ExprDup").ID() == a.ID());
+dom.DeleteObject(b);
+dom.DeleteObject(a);
+WriteLine(dom.GetObject("ExprDup"));
+---- output
+false
+true
+null
+----

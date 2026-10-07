@@ -1,0 +1,180 @@
+!! Control flow: if/elseif/else, while, foreach, quit
+
+#### if elseif else
+integer i = 0;
+while (i < 4) {
+  if (i == 0) {
+    WriteLine("zero");
+  } elseif (i == 1) {
+    WriteLine("one");
+  } elseif (i == 2) {
+    WriteLine("two");
+  } else {
+    WriteLine("other");
+  }
+  i = i + 1;
+}
+---- output
+zero
+one
+two
+other
+----
+
+#### nested if
+integer a = 5;
+integer b = 10;
+if (a < b) {
+  if (a > 3) {
+    WriteLine("a in (3, b)");
+  } else {
+    WriteLine("a <= 3");
+  }
+}
+---- output
+a in (3, b)
+----
+
+#### if without braces is a syntax error
+integer a = 1;
+if (a == 1) WriteLine("one");
+WriteLine("end");
+---- output
+---- errors
+SyntaxError: Error 1 at row 2 col 23
+----
+
+#### while loop with complex condition
+integer i = 0;
+integer sum = 0;
+while ((i < 100) && (sum < 50)) {
+  sum = sum + i;
+  i = i + 1;
+}
+WriteLine(i # " " # sum);
+---- output
+11 55
+----
+
+#### nested while loops
+integer i = 1;
+string line;
+while (i <= 3) {
+  integer j = 1;
+  line = "";
+  while (j <= 3) {
+    line = line # (i * j) # " ";
+    j = j + 1;
+  }
+  WriteLine(line);
+  i = i + 1;
+}
+---- output
+1 2 3 
+2 4 6 
+3 6 9 
+----
+
+#### foreach over a tab separated list
+string item;
+foreach (item, "a\tb\tc") {
+  WriteLine(item);
+}
+---- output
+a
+b
+c
+----
+
+#### foreach over an empty list
+string item;
+integer count = 0;
+foreach (item, "") {
+  count = count + 1;
+}
+WriteLine(count);
+---- output
+0
+----
+
+#### foreach over system.GenerateEnum
+string n;
+string out = "";
+foreach (n, system.GenerateEnum(3, 7)) {
+  out = out # n # ",";
+}
+WriteLine(out);
+---- output
+3,4,5,6,7,
+----
+
+#### quit ends the script
+WriteLine("before");
+quit;
+WriteLine("after");
+---- output
+before
+----
+
+#### quit inside a loop
+integer i = 0;
+while (true) {
+  i = i + 1;
+  if (i == 5) {
+    WriteLine("quit at " # i);
+    quit;
+  }
+}
+WriteLine("not reached");
+---- output
+quit at 5
+----
+
+#### maximum loop iterations
+integer i = 0;
+system.MaxIterations(100);
+while (i < 1000) {
+  i = i + 1;
+}
+WriteLine("i=" # i);
+---- output
+i=1000
+----
+
+#### variable scope in blocks
+integer a = 1;
+if (true) {
+  integer a = 2;
+  integer b = 3;
+}
+WriteLine(a # " " # b);
+---- output
+2 3
+----
+
+#### Write and WriteLine
+Write("a");
+Write("b");
+WriteLine("c");
+Write(1);
+Write(true);
+---- output
+abc
+1true\c
+----
+
+#### WriteLine without argument is a syntax error
+WriteLine();
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 20
+----
+
+#### semicolons and comments
+! comment line
+integer a = 1; ! trailing comment
+integer b = 2;;
+WriteLine(a + b); ! output
+---- output
+3
+----

@@ -1,0 +1,114 @@
+!! Mathematical functions
+
+#### absolute value, minimum, maximum, modulo
+real a = -2.5;
+integer i = -7;
+WriteLine(a.Abs());
+WriteLine(i.Abs());
+WriteLine(a.Min(1.0) # " " # a.Max(1.0));
+WriteLine(i.Mod(3));
+real m = 7.5;
+WriteLine(m.Mod(2));
+---- output
+2.500000
+7.000000
+-2.500000 1.000000
+-1.000000
+1.500000
+----
+
+#### rounding
+real r = 2.567;
+WriteLine(r.Round(0) # " " # r.Round(1) # " " # r.Round(2));
+WriteLine(r.Floor() # " " # r.Ceil() # " " # r.Trunc());
+real n = -2.5;
+WriteLine(n.Round(0) # " " # n.Floor() # " " # n.Ceil() # " " # n.Trunc());
+---- output
+3.000000 2.600000 2.570000
+2.000000 3.000000 2.567000
+-3.000000 -3.000000 -2.000000 -2.500000
+----
+
+#### powers and roots
+real x = 16.0;
+WriteLine(x.Sqrt());
+WriteLine(x.Cbrt());
+WriteLine(x.Pow(0.5));
+WriteLine((2.0).Pow(10));
+WriteLine((-8.0).Cbrt());
+WriteLine((-1.0).Sqrt());
+---- output
+4.000000
+2.519842
+4.000000
+1024.000000
+-2.000000
+-nan
+----
+
+#### exponential and logarithm
+real x = 2.0;
+WriteLine(x.Exp().ToString(6));
+WriteLine(x.Exp2() # " " # x.Exp10());
+WriteLine(x.Log().ToString(6) # " " # x.Log2() # " " # x.Log10().ToString(6));
+WriteLine((0.0).Log());
+WriteLine(x.Expm1().ToString(6) # " " # x.Log1p().ToString(6));
+---- output
+7.389056
+4.000000 100.000000
+0.693147 1.000000 0.301030
+-inf
+6.389056 1.098612
+----
+
+#### trigonometric functions
+real pi = 3.14159265358979;
+WriteLine((pi / 2).Sin().ToString(6) # " " # pi.Cos().ToString(6) # " " # (pi / 4).Tan().ToString(6));
+WriteLine((1.0).Asin().ToString(6) # " " # (0.0).Acos().ToString(6) # " " # (1.0).Atan().ToString(6));
+WriteLine((1.0).Sinh().ToString(6) # " " # (1.0).Cosh().ToString(6) # " " # (1.0).Tanh().ToString(6));
+WriteLine((1.0).Asinh().ToString(6) # " " # (2.0).Acosh().ToString(6) # " " # (0.5).Atanh().ToString(6));
+---- output
+1.000000 -1.000000 1.000000
+1.570796 1.570796 0.785398
+1.175201 1.543081 0.761594
+0.881374 1.316958 0.549306
+----
+
+#### math on integers
+integer i = 9;
+WriteLine(i.Sqrt());
+WriteLine(i.Pow(2));
+WriteLine(i.Log10());
+---- output
+3.000000
+81.000000
+0.954243
+----
+
+#### large and small real numbers
+real big = 1000000.0 * 1000000.0;
+real small = 1.0 / 1000000.0;
+WriteLine(big);
+WriteLine(small);
+WriteLine(small.ToString(9));
+WriteLine(big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big * big);
+---- output
+1000000000000.000000
+0.000001
+0.000001000
+inf
+----
+
+#### random numbers
+system.Srandom(42);
+integer i = 0;
+boolean ok = true;
+while (i < 100) {
+  integer r = system.Random(1, 6);
+  if ((r < 1) || (r > 6)) { ok = false; }
+  i = i + 1;
+}
+WriteLine(ok);
+---- output
+true
+----

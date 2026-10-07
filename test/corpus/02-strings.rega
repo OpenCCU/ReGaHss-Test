@@ -1,0 +1,217 @@
+!! String functions and string handling
+
+#### length and substrings
+string s = "Hello World";
+WriteLine(s.Length());
+WriteLine(s.Substr(0, 5));
+WriteLine(s.Substr(6, 5));
+WriteLine(s.Substr(6, 100));
+WriteLine(s.Substr(20, 5));
+WriteLine("[" # s.Substr(0, 0) # "]");
+---- output
+11
+Hello
+World
+World
+
+[]
+----
+
+#### find
+string s = "Hello World";
+WriteLine(s.Find("World"));
+WriteLine(s.Find("o"));
+WriteLine(s.Find("x"));
+WriteLine(s.Find(""));
+WriteLine(s.Find("hello"));
+---- output
+6
+4
+-1
+0
+-1
+----
+
+#### empty strings
+string s = "";
+WriteLine(s.Length());
+WriteLine("[" # s.Substr(0, 3) # "]");
+WriteLine(s.Find("a"));
+WriteLine("[" # s.ToUpper() # "]");
+WriteLine("[" # s.Trim() # "]");
+---- output
+0
+[]
+-1
+[]
+[]
+----
+
+#### upper and lower case
+string s = "Hello Wörld 123";
+WriteLine(s.ToUpper());
+WriteLine(s.ToLower());
+---- output
+HELLO WöRLD 123
+hello wörld 123
+----
+
+#### trim
+string s = "  \t padded \t  ";
+WriteLine("[" # s.Trim() # "]");
+WriteLine("[" # s.LTrim() # "]");
+WriteLine("[" # s.RTrim() # "]");
+WriteLine("[" # "xxhixx".Trim("x") # "]");
+---- output
+[padded]
+[padded \t  ]
+[  \t padded]
+[hi]
+----
+
+#### replace
+string s = "a-b-c-d";
+WriteLine(s.Replace("-", "+"));
+WriteLine(s.Replace("-", ""));
+WriteLine(s.Replace("x", "y"));
+WriteLine(s.Replace("a-b", "ab"));
+WriteLine("aaa".Replace("a", "aa"));
+---- output
+a+b+c+d
+abcd
+a-b-c-d
+ab-c-d
+aaaaaa
+----
+
+#### starts with, ends with, contains
+string s = "OpenCCU ReGaHss";
+WriteLine(s.StartsWith("Open"));
+WriteLine(s.StartsWith("open"));
+WriteLine(s.EndsWith("Hss"));
+WriteLine(s.EndsWith("CCU"));
+WriteLine(s.Contains("CCU Re"));
+WriteLine(s.Contains("xyz"));
+---- output
+true
+false
+true
+false
+true
+false
+----
+
+#### string lists with StrValueByIndex
+string list = "a,b,,d";
+WriteLine(list.StrValueByIndex(",", 0));
+WriteLine(list.StrValueByIndex(",", 1));
+WriteLine("[" # list.StrValueByIndex(",", 2) # "]");
+WriteLine(list.StrValueByIndex(",", 3));
+WriteLine("[" # list.StrValueByIndex(",", 4) # "]");
+WriteLine("[" # list.StrValueByIndex(";", 0) # "]");
+---- output
+a
+b
+[]
+d
+[]
+[a,b,,d]
+----
+
+#### split into a tab separated list
+string list = "1;2;3";
+string items = list.Split(";");
+string item;
+foreach(item, items) {
+  WriteLine("item " # item);
+}
+---- output
+item 1
+item 2
+item 3
+----
+
+#### escape sequences in string literals
+WriteLine("tab:\t|");
+WriteLine("quote:\"|");
+WriteLine("backslash:\\|");
+WriteLine('single "quoted"');
+Write("newline:\n|");
+WriteLine("");
+---- output
+tab:\t|
+quote:"|
+backslash:\\|
+single "quoted"
+newline:\n|
+----
+
+#### uri encoding
+string s = "a b&c=d/ä?";
+WriteLine(s.UriEncode());
+WriteLine(s.UriEncode().UriDecode());
+WriteLine("%41%42%2".UriDecode());
+---- output
+a%20b%26c%3Dd%2F%C3%A4%3F
+a b&c=d/ä?
+AB%2
+----
+
+#### latin1 and utf8 conversion
+string s = "Grüße";
+WriteLine(s.Length());
+string u = s.ToUTF8();
+WriteLine(u.Length());
+WriteLine(u.ToLatin() == s);
+---- output
+7
+11
+true
+----
+
+#### character access by index
+string s = "ABC";
+integer i = 0;
+while (i < s.Length()) {
+  WriteLine(i # ":" # s.Substr(i, 1));
+  i = i + 1;
+}
+---- output
+0:A
+1:B
+2:C
+----
+
+#### long strings
+string s = "";
+integer i = 0;
+while (i < 1000) {
+  s = s # "0123456789";
+  i = i + 1;
+}
+WriteLine(s.Length());
+WriteLine(s.Substr(9995, 5));
+---- output
+10000
+56789
+----
+
+#### string formatting of numbers
+real r = 1234.5678;
+WriteLine(r.ToString(0) # " " # r.ToString(1) # " " # r.ToString(6));
+integer i = 255;
+WriteLine(i.ToString(2));
+---- output
+1235 1234.6 1234.567800
+255
+----
+
+#### comparison of strings with different case and length
+WriteLine("abc" < "abcd");
+WriteLine("Z" < "a");
+WriteLine("10" < "9");
+---- output
+true
+true
+true
+----

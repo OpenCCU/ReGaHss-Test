@@ -1,0 +1,73 @@
+!! system object: variables, enums, misc functions
+
+#### script variables via system.IsVar and system.GetVar
+WriteLine(system.IsVar("corpusVar"));
+WriteLine("[" # system.GetVar("corpusVar") # "]");
+---- output
+false
+[null]
+----
+
+#### system.SetVar is not available
+system.SetVar("corpusVar", "value 1");
+---- output
+---- errors
+SyntaxError: Error 1 at row 1 col 21
+----
+
+#### system.GenerateEnum
+WriteLine(system.GenerateEnum(0, 3));
+WriteLine(system.GenerateEnum(5, 5));
+WriteLine("[" # system.GenerateEnum(3, 1) # "]");
+---- output
+0\t1\t2\t3
+5
+[]
+----
+
+#### system.ToFloat
+WriteLine(system.ToFloat("3.5"));
+WriteLine(system.ToFloat(7));
+---- output
+
+---- errors
+ScriptRuntimeError: WriteLine(system.ToFloat("3.5"));
+----
+
+#### Exec of a shell command
+string stdout;
+string stderr;
+system.Exec("echo hello; echo error 1>&2", &stdout, &stderr);
+WriteLine("[" # stdout # "][" # stderr # "]");
+---- output
+[hello\n][error\n]
+----
+
+#### Exec with exit code
+integer rc = system.Exec("exit 3");
+WriteLine(rc);
+---- output
+3
+----
+
+#### Call of an empty string
+WriteLine("before");
+Call("");
+WriteLine("after");
+---- output
+before
+after
+----
+
+#### Debug output
+Debug("corpus debug output");
+WriteLine("done");
+---- output
+done
+----
+
+#### ReadyConfig
+WriteLine(dom.GetObject(ID_INTERFACES).Count() > 0);
+---- output
+true
+----

@@ -1,0 +1,155 @@
+!! Date/time handling (the clock of ReGaHss stands still at the fixed time)
+!! fixed-time: 2024-06-15 12:34:56 CEST
+
+#### current date and time
+WriteLine(system.Date("%Y-%m-%d %H:%M:%S %Z"));
+WriteLine(system.Date("%F %T"));
+WriteLine(system.Date("%A %d. %B %Y"));
+WriteLine(system.Date("%a %b %j %U %u %w"));
+---- output
+2024-06-15 12:34:56 CEST
+2024-06-15 12:34:56
+Saturday 15. June 2024
+Sat Jun 167 23 6 6
+----
+
+#### time literals and their components
+time t = @2024-02-29 13:45:30@;
+WriteLine(t);
+WriteLine(t.Year() # " " # t.Month() # " " # t.Day());
+WriteLine(t.Hour() # " " # t.Minute() # " " # t.Second());
+WriteLine(t.Week() # " " # t.Weekday() # " " # t.Yearday());
+---- output
+2024-02-29 13:45:30
+2024 2 29
+13 45 30
+9 8 60
+----
+
+#### time formatting
+time t = @2024-12-31 23:59:59@;
+WriteLine(t.Format("%d.%m.%Y %H:%M:%S"));
+WriteLine(t.Format("%y%m%d"));
+WriteLine(t.Format("%I:%M %p"));
+WriteLine(t.Format("%%"));
+WriteLine(t.Format(""));
+---- output
+31.12.2024 23:59:59
+241231
+11:59 PM
+%
+
+----
+
+#### time arithmetic via timestamps
+time t = @2024-01-31 12:00:00@;
+integer ts = t.ToInteger();
+WriteLine(ts);
+time next = (ts + 86400).ToTime();
+WriteLine(next);
+WriteLine((ts + 30 * 86400).ToTime());
+---- output
+1706698800
+2024-02-01 12:00:00
+2024-03-01 12:00:00
+----
+
+#### leap years
+WriteLine(@2024-02-29 00:00:00@.Yearday());
+WriteLine(@2023-12-31 00:00:00@.Yearday());
+WriteLine(@2024-12-31 00:00:00@.Yearday());
+WriteLine((@2024-02-28 12:00:00@.ToInteger() + 86400).ToTime());
+WriteLine((@2023-02-28 12:00:00@.ToInteger() + 86400).ToTime());
+---- output
+60
+365
+366
+2024-02-29 12:00:00
+2023-03-01 12:00:00
+----
+
+#### DST transitions
+time t1 = @2024-03-31 01:59:59@;
+WriteLine(t1.Format("%F %T %Z") # " " # t1.IsDST());
+WriteLine((t1.ToInteger() + 1).ToTime().Format("%F %T %Z"));
+time t2 = @2024-10-27 02:30:00@;
+WriteLine(t2.Format("%F %T %Z") # " " # t2.IsDST());
+---- output
+2024-03-31 01:59:59 CET 0
+2024-03-31 03:00:00 CEST
+2024-10-27 02:30:00 CET 0
+----
+
+#### string to time conversion
+WriteLine("2024-06-15 08:00:00".ToTime());
+WriteLine("2024-06-15".ToTime());
+WriteLine("1718431200".ToInteger().ToTime());
+WriteLine("invalid".ToTime());
+---- output
+2024-06-15 08:00:00
+2024-06-15 00:00:00
+2024-06-15 08:00:00
+1970-01-01 01:00:00
+----
+
+#### time comparisons
+time a = @2024-01-01 00:00:00@;
+time b = @2024-06-15 12:00:00@;
+WriteLine(a < b);
+WriteLine(a == a);
+WriteLine(b.ToInteger() - a.ToInteger());
+---- output
+true
+true
+14382000
+----
+
+#### system time functions
+WriteLine(system.Date("%H:%M"));
+time now = system.Date("%F %T").ToTime();
+WriteLine(now.Format("%F"));
+---- output
+12:34
+2024-06-15
+----
+
+#### sunrise and sunset at the configured location
+WriteLine(system.Latitude() # " " # system.Longitude());
+WriteLine(system.SunriseTime("%H:%M") # " " # system.SunsetTime("%H:%M"));
+---- output
+52.500000 13.400000
+04:44 21:28
+----
+
+#### sunrise and sunset at other locations
+string loc;
+foreach (loc, "51.5,-0.13\t69.65,18.96\t-33.87,151.21\t-0.18,-78.47\t78.22,15.65") {
+  real lat = loc.StrValueByIndex(",", 0).ToFloat();
+  real lon = loc.StrValueByIndex(",", 1).ToFloat();
+  system.Latitude(lat);
+  system.Longitude(lon);
+  WriteLine(loc # ": " # system.SunriseTime("%H:%M") # " " # system.SunsetTime("%H:%M"));
+}
+system.Latitude(52.5);
+system.Longitude(13.4);
+---- output
+51.5,-0.13: 05:44 22:16
+69.65,18.96: 01:36 23:52
+-33.87,151.21: 22:57 08:55
+-0.18,-78.47: 13:11 01:15
+78.22,15.65: 01:50 00:06
+----
+
+#### epoch boundaries
+WriteLine((0).ToTime());
+WriteLine((2147483647).ToTime());
+WriteLine((2147483648).ToTime());
+WriteLine(@2038-01-19 04:14:08@.ToInteger());
+WriteLine(@2100-01-01 00:00:00@.ToInteger());
+---- output
+1970-01-01 01:00:00
+2038-01-19 04:14:07
+2038-01-19 04:14:08
+2147483648
+4102441200
+----
