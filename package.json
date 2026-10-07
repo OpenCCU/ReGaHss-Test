@@ -46,7 +46,7 @@
   },
   "devDependencies": {
     "eslint": "^10.2.0",
-    "xo": "^2.0.2"
+    "xo": "^5.0.1"
   },
   "xo": {
     "space": 4,
