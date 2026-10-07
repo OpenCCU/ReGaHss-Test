@@ -10,7 +10,8 @@ This repository performs automated daily system tests of `ReGaHss` - the HomeMat
 * The required parts of an OpenCCU-Base revision (`bin/<arch>/ReGaHss`, `lib/<arch>/libXmlRpc.so`, `lib/<arch>/libxmlparser.so`, `www/` and the CMake build system plus library sources) are fetched via a shallow sparse checkout (`scripts/fetch-openccu-base.sh`).
 * ReGaHss is either run with the prebuilt `libXmlRpc`/`libxmlparser` of OpenCCU-Base or with these libraries rebuilt from the OpenCCU-Base sources (`scripts/build-libs.sh`), optionally instrumented with AddressSanitizer/UndefinedBehaviorSanitizer and gcov coverage.
 * ReGaHss and its runtime environment (`rega.conf`, `InterfacesList.xml`, the prebuilt test `homematic.regadom`, dummy hook scripts) are installed into a disposable docker image (`scripts/install-regahss.sh`).
-* Each test file (`test/*.js`) starts its own ReGaHss process (optionally together with the [hm-simulator](https://github.com/hobbyquaker/hm-simulator) rfd simulation or under [libfaketime](https://github.com/wolfcw/libfaketime)) and interacts with it via the ReGa script interface, its XML-RPC/BIN-RPC server and its log output.
+* Each test file (`test/*.js`) starts its own ReGaHss process (optionally together with the simulated CCU interface processes or under [libfaketime](https://github.com/wolfcw/libfaketime)) and interacts with it via the ReGa script interface, its XML-RPC/BIN-RPC server and its log output.
+* `lib/ccu-simulator.js` simulates the interface processes of a CCU: `BidCos-RF` (rfd, BIN-RPC), `HmIP-RF` (HmIPServer, XML-RPC) and `VirtualDevices` (XML-RPC, `/groups`). They accept the `init` of ReGaHss, announce their devices (`test/fixtures/devices.json`) via `listDevices`/`newDevices`, answer `getParamsetDescription`/`getLinks`/`setValue` etc. and allow tests to send events, add/delete devices or restart an interface.
 * Every ReGaHss instance runs with its own working directory (`rega.conf`, `homematic.regadom`, `InterfacesList.xml`) and its own ports (`lib/rega-instance.js`), so that the test files can be run in parallel worker processes (`REGA_JOBS`).
 * ReGaHss is started directly (without wrapper processes), so the test harness notices crashes immediately: pending tests fail at once with the exit signal and the last log lines of ReGaHss instead of running into timeouts.
 
@@ -38,6 +39,10 @@ docker run --rm --init -v "$PWD/results:/results" regahss-test:asan
 # run only specific test files
 docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js test/13-fixed-bugs.js
 
+# additionally compare the results of the script corpus with the ReGaHss of
+# another OpenCCU-Base revision (results/corpus-diff.md, informational)
+docker build -t regahss-test --build-arg REF_BASE_REF=<sha> .
+
 # show the ReGaHss output while running the tests
 docker run --rm --init -e REGA_OUTPUT=1 regahss-test npx mocha test/01-rega-startup.js
 ```
@@ -49,6 +54,7 @@ Build arguments:
 | `REGA_ARCH` | `x86_64-linux-gnu` | ReGaHss architecture to test (`x86_64-linux-gnu` or `i686-linux-gnu`) |
 | `BASE_REF` | `main` | OpenCCU-Base branch, tag or commit SHA to take ReGaHss from |
 | `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
+| `REF_BASE_REF` | – | OpenCCU-Base revision with a reference ReGaHss for differential tests of the script corpus (the CI uses the revision before the last change of the ReGaHss binary) |
 | `REGA_LIBS` | `prebuilt` | `libXmlRpc`/`libxmlparser` to run ReGaHss with: `prebuilt` (shipped with OpenCCU-Base), `source` (release build from the OpenCCU-Base sources, incl. informational `abidiff` report vs. the prebuilt libraries) or `asan` (debug build with ASan/UBSan and gcov coverage, `x86_64-linux-gnu` only) |
 
 For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup (the ASan allocator calls `clock_gettime()` with its lock held, which triggers the lazy initialization of libfaketime, which in turn allocates memory), the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
@@ -91,7 +97,12 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_FAKETIME_LIB` | auto | `libfaketime.so.1` to fake the time of ReGaHss with |
 | `REGA_RESULTS_DIR` | `/results` | directory for the summary, JUnit report, ReGaHss logs, core dumps, sanitizer reports and coverage (docker image) |
 | `REGA_OUTPUT` | – | set to `1` to show the ReGaHss output |
-| `SIM_OUTPUT` | – | set to `1` to show the hm-simulator output |
+| `SIM_OUTPUT` | – | set to `1` to show the output of the interface simulator (RPC calls in both directions) |
+| `REGA_CORPUS` | – | only run the script corpus files matching this regular expression |
+| `REGA_CORPUS_RECORD` | – | set to `1` to write the results of the ReGaHss under test into the script corpus files |
+| `REGA_REF_BIN` | – | reference ReGaHss to execute the script corpus with as well (set automatically in the docker image if built with `REF_BASE_REF`) |
+| `REGA_REF_LIB_DIR` | – | directory with the `libXmlRpc`/`libxmlparser` of the reference ReGaHss |
+| `REGA_DIFF_REPORT` | – | markdown file to write the differences between ReGaHss and the reference ReGaHss to |
 
 ### Writing tests
 
@@ -122,6 +133,46 @@ describe('Running my-test.js [' + regaLabel + ']', function () {
 
     cleanupTest();
 });
+```
+
+### Script corpus
+
+`test/corpus/*.rega` contains ReGa scripts together with their expected output, the resulting variables and the script errors. Each file is executed by a ReGaHss instance of its own (`test/16-script-corpus.js`):
+
+```
+!! fixed-time: 2024-06-15 12:34:56 CEST
+
+#### string concatenation
+string s = "a" # "b";
+WriteLine(s);
+---- output
+ab
+---- vars
+s=ab
+----
+```
+
+* `!! fixed-time: <date>` freezes the clock of ReGaHss (libfaketime) for all cases of the file
+* each case starts with `#### <name>` followed by the script, the expected `output` (every line ends with CR/LF; `\r`, `\n`, `\t` and `\\` are escaped and a trailing `\c` means that the output does not end with a line break), the expected `vars` (values of the script variables) and, only if there are any, the expected `errors` (script errors logged by ReGaHss, normalized)
+* new cases can be added without expectations and recorded with `REGA_CORPUS_RECORD=1 npx mocha test/16-script-corpus.js`; the recorded results must be reviewed before committing them
+
+With `REGA_REF_BIN` every case is executed by a reference ReGaHss as well and the differences are written to a markdown report (informational, they do not make the tests fail). The CI uses the ReGaHss of the OpenCCU-Base revision before the last change of the binary as reference and adds the report to the job summary.
+
+### Programs and time modules
+
+`lib/program-builder.js` generates ReGa scripts creating programs (conditions on system variables, datapoints and time modules, destinations with delays, else-if/else rules) and time modules (incl. astro time modules with offsets to sunrise/sunset) the same way the WebUI does, e.g.:
+
+```js
+const {programScript} = require('../lib/program-builder.js');
+
+await rega.exec(programScript({
+    name: 'Key pressed',
+    rules: [{
+        // conditions: OR of AND groups
+        conditions: [[{datapoint: 'BidCos-RF.BidCoS-RF:40.PRESS_SHORT', value: true, trigger: 'update'}]],
+        destinations: [{sysvar: 'VarString1', value: 'key pressed', delay: 3}]
+    }]
+}));
 ```
 
 ## Continuous integration
@@ -200,7 +251,7 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 * **Phase 0/1** (done): pinned dependencies, node.js 22, docker based test environment, switch from OCCU to OpenCCU-Base
 * **Phase 2** (done): build `libXmlRpc`/`libxmlparser` from OpenCCU-Base sources and test ReGaHss against them (incl. ASan/UBSan builds, ABI checks via `abidiff`, gcov coverage), reusable workflow to test OpenCCU-Base pull requests
 * **Phase 3** (done): test harness rework (`ReGaInstance` with per-instance working directories/ports, parallel execution, crash detection, graceful shutdown tests, own script/HTTP client instead of `request`/`homematic-rega`, accelerated faketime timer tests, JUnit reports, core dumps, log artifacts)
-* **Phase 4**: broader test coverage (data driven script test corpus, differential tests against previous releases, object model/persistence tests, extended rfd/HmIP/VirtualDevices simulator)
+* **Phase 4** (done): broader test coverage (data driven script test corpus with record mode, differential tests against the previous ReGaHss release, object model/persistence round trip tests, own BidCos-RF/HmIP-RF/VirtualDevices interface simulator with device lifecycle and RPC tests, program/time module scenarios incl. astro time modules at other locations)
 * **Phase 5**: aarch64/armhf via QEMU, Y2038 tests on 32-bit platforms, XML-RPC/HTTP fuzzing, long-running stability tests
 
 ## Links
@@ -208,8 +259,7 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 * [OpenCCU](https://github.com/OpenCCU/OpenCCU)
 * [OpenCCU-Base](https://github.com/OpenCCU/OpenCCU-Base)
 * [OCCU](https://github.com/OpenCCU/occu) (legacy)
-* [hm-simulator](https://github.com/hobbyquaker/hm-simulator) (simulates rfd/hmipserver)
-* [homematic-rega](https://github.com/hobbyquaker/homematic-rega) (Node.js Homematic CCU ReGaHSS Remote Script Interface)
+* [hm-simulator](https://github.com/hobbyquaker/hm-simulator) (formerly used rfd/HmIPServer simulator, source of the HmIP device descriptions in `test/fixtures/devices.json`)
 * [ccu x86 docker image](https://hub.docker.com/r/litti/ccu2/) (used for creation of the prebuilt homematic.regadom)
 
 ## Contributing
