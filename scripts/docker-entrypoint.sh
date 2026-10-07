@@ -37,6 +37,10 @@ rm -rf "${REGA_LOG_DIR}"
 export REGA_JUNIT_FILE=${REGA_JUNIT_FILE:-${RESULTS}/junit.xml}
 rm -f "${REGA_JUNIT_FILE}"
 
+# warnings of the test suite (e.g. known aborts of ReGaHss while stopping it)
+export REGA_WARNINGS_FILE=${REGA_WARNINGS_FILE:-${RESULTS}/warnings.md}
+rm -f "${REGA_WARNINGS_FILE}"
+
 # working directories of the ReGaHss instances, which also receive core dumps
 # of ReGaHss if the kernel.core_pattern of the host is a relative file name
 # (e.g. 'core.%e.%p') and core dumps are enabled ('docker run --ulimit core=-1')
@@ -118,16 +122,30 @@ rc=$?
     echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
     echo
   fi
+  if [[ -s ${REGA_WARNINGS_FILE} ]]; then
+    echo "### Warnings"
+    echo
+    echo "Known ReGaHss issues which do not fail the test run (test/15-rega-lifecycle.js checks the shutdown on SIGTERM strictly):"
+    echo
+    cat "${REGA_WARNINGS_FILE}"
+    echo
+  fi
 } >>"${summary}"
 
-# core dumps of crashed ReGaHss processes (incl. backtraces)
-mapfile -t cores < <(find "${REGA_WORK_DIR}" -type f -name 'core*' 2>/dev/null | sort)
+# core dumps of crashed ReGaHss processes (incl. backtraces); the ones of known
+# aborts while stopping ReGaHss (renamed to shutdown-abort.core* by the test
+# harness, see warnings) are reported, but do not fail the test run
+mapfile -t cores < <(find "${REGA_WORK_DIR}" -type f \( -name 'core*' -o -name 'shutdown-abort.core*' \) 2>/dev/null | sort)
+crash_cores=0
+for core in "${cores[@]}"; do
+  [[ $(basename "${core}") == shutdown-abort.* ]] || crash_cores=$((crash_cores + 1))
+done
 if [[ ${#cores[@]} -gt 0 ]]; then
   mkdir -p "${cores_dir}"
   {
     echo "### Core dumps"
     echo
-    echo "**${#cores[@]} core dump(s) found:**"
+    echo "**${#cores[@]} core dump(s) found** (${crash_cores} of crashes, $((${#cores[@]} - crash_cores)) of known aborts while stopping ReGaHss):"
     echo
     for core in "${cores[@]}"; do
       name=$(basename "$(dirname "${core}")")-$(basename "${core}")
@@ -146,8 +164,10 @@ if [[ ${#cores[@]} -gt 0 ]]; then
     done
   } >>"${summary}"
   cp "${REGA_BIN}" "${cores_dir}/"
-  echo "ERROR: ${#cores[@]} core dump(s) of ReGaHss found in ${cores_dir}" >&2
-  [[ ${rc} -ne 0 ]] || rc=1
+  if [[ ${crash_cores} -gt 0 ]]; then
+    echo "ERROR: ${crash_cores} core dump(s) of crashed ReGaHss processes found in ${cores_dir}" >&2
+    [[ ${rc} -ne 0 ]] || rc=1
+  fi
 fi
 
 if [[ -n ${ref_version} ]]; then

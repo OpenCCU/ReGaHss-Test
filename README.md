@@ -59,6 +59,8 @@ Build arguments:
 
 For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup (the ASan allocator calls `clock_gettime()` with its lock held, which triggers the lazy initialization of libfaketime, which in turn allocates memory), the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
 
+ReGaHss sporadically aborts when it is stopped with `SIGTERM` (`terminate called without an active exception`: the forced unwind of a thread cancelled by `Halt()` ends in `std::terminate()`). This known shutdown race only causes a warning in the summary when ReGaHss is stopped at the end of a test file (its core dump is kept as `shutdown-abort.core*`, but does not fail the test run), whereas `test/15-rega-lifecycle.js` checks the shutdown on `SIGTERM` strictly.
+
 The output of every ReGaHss instance started by the tests is kept in `results/logs.tar.gz`. If ReGaHss crashes with a core dump (requires `docker run --ulimit core=-1` and a relative `kernel.core_pattern` of the host such as `core.%e.%p`), the core dumps are moved to `results/cores` together with a backtrace (`gdb`) and the ReGaHss binary, and the test run fails.
 
 The timer tests (`test/07*-timer-faketime-*.js`) run with a 10 times accelerated faked clock by default (`REGA_FAKETIME_RATE`), which reduces the runtime of the whole test suite from ~28 to ~3 minutes. For the 32-bit ReGaHss (`i686-linux-gnu`) they run in real time, as libfaketime does not accelerate the waits of its timer thread (glibc time64 ABI) and the timers would fire too late. The nightly CI run executes them in real time on all architectures (`REGA_FAKETIME_RATE=1`). Real time runs benefit from parallel execution (`REGA_JOBS=4`), as the timer tests are split into four files.
@@ -91,6 +93,7 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_STOP_SIGNAL` | `KILL` | signal to stop ReGaHss with after each test file (`TERM` for `asan`) |
 | `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
 | `REGA_JUNIT_FILE` | – | file to write a JUnit XML report to (`results/junit.xml` in the docker image) |
+| `REGA_WARNINGS_FILE` | – | file to append warnings of the test run to, e.g. known aborts of ReGaHss while stopping it (`results/warnings.md` in the docker image, shown in the summary) |
 | `REGA_WORK_DIR` | `$TMPDIR/regahss-test` | base directory of the working directories of the ReGaHss instances |
 | `REGA_PORT_BASE` | `20000` | first port used by the ReGaHss instances (10 ports per parallel worker) |
 | `REGA_LINEBUF_LIB` | auto | preload library making the ReGaHss output line buffered (`src/linebuf.c` or coreutils' `libstdbuf.so`) |
