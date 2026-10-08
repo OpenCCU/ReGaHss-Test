@@ -1,4 +1,4 @@
-/* global describe, it */
+/* global describe, it, before, after */
 /* eslint-disable no-unused-vars, max-nested-callbacks, prefer-arrow-callback, capitalized-comments */
 
 const {
@@ -11,6 +11,8 @@ const {
 } = require('../lib/helper.js');
 
 require('should');
+
+const net = require('net');
 
 describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
     // initialize test environment
@@ -373,6 +375,87 @@ Write("10: ");WriteLine("1" + "2" + "3");
 `);
                     done();
                 }
+            });
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/3048
+        describe('IP data point State() tests', function () {
+            // TCP server receiving the texts sent by the IP data point (one
+            // connection per text)
+            const received = [];
+            let server = null;
+            let dpId = null;
+
+            // waits until the TCP server received count texts
+            async function receivedTexts(count) {
+                const deadline = Date.now() + 10_000;
+                while (received.length < count && Date.now() < deadline) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise(resolve => {
+                        setTimeout(resolve, 50);
+                    });
+                }
+
+                return received;
+            }
+
+            before(async function () {
+                server = net.createServer(socket => {
+                    const chunks = [];
+                    socket.on('data', chunk => chunks.push(chunk));
+                    socket.on('close', () => received.push(Buffer.concat(chunks).toString('latin1')));
+                    socket.on('error', () => undefined);
+                });
+                await new Promise(resolve => {
+                    server.listen(0, '127.0.0.1', resolve);
+                });
+            });
+
+            after(function () {
+                server.close();
+            });
+
+            it('should create an IP data point', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object o = dom.CreateObject(OT_IPDP, "IPDP State Test");
+o.IpAddress("127.0.0.1");
+o.IpPort(${server.address().port});
+Write(o.ID());
+                `);
+                dpId = Number(output);
+                dpId.should.be.above(0);
+            });
+
+            it('should send the text of State() unchanged', async function () {
+                this.timeout(60_000);
+                // (texts which were rejected or converted because of the
+                // value type guessed from the text)
+                const texts = ['x<y', '<empty>', 'test', 'nachricht', 'dim 50%', '1,5', '12:00', 'Wert 2025-03-06'];
+                for (const [index, text] of texts.entries()) {
+                    // eslint-disable-next-line no-await-in-loop
+                    const {output} = await rega.exec(`Write(dom.GetObject(${dpId}).State("${text}"));`);
+                    output.should.equal('true', 'State("' + text + '")');
+                    // eslint-disable-next-line no-await-in-loop
+                    await receivedTexts(index + 1);
+                }
+
+                received.should.deepEqual(texts);
+            });
+
+            it('should send the text of a delayed State() unchanged', async function () {
+                this.timeout(30_000);
+                const count = received.length;
+                const {output} = await rega.exec(`Write(dom.GetObject(${dpId}).State("delayed <x>", 300));`);
+                output.should.equal('true');
+                const texts = await receivedTexts(count + 1);
+                texts.slice(count).should.deepEqual(['delayed <x>']);
+            });
+
+            it('should delete the IP data point', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`Write(dom.DeleteObject(dom.GetObject(${dpId})));`);
+                output.should.equal('true');
             });
         });
 
