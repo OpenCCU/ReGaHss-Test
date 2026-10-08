@@ -16,6 +16,7 @@ const {
     regaInstance
 } = require('../lib/helper.js');
 const {programScript} = require('../lib/program-builder.js');
+const {until} = require('../lib/script-helpers.js');
 
 require('should');
 
@@ -230,8 +231,8 @@ dom.GetObject("OM String").State("Grüße");
             it('should execute the program on a value change', async function () {
                 this.timeout(30_000);
                 await setAndWait('OM Number', 35, 'OM String', 'hot');
-                const bool = await value('OM Bool');
-                bool.should.equal('true');
+                // (the second destination may run after the first one)
+                await until(value.bind(null, 'OM Bool'), 'true');
                 await setAndWait('OM Number', 20, 'OM String', 'normal');
             });
 
