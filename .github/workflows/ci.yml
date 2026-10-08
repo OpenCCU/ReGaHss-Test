@@ -40,7 +40,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v6
         with:
@@ -67,7 +67,7 @@ jobs:
       tests: ${{ steps.matrix.outputs.tests }}
       images: ${{ steps.matrix.outputs.images }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: resolve OpenCCU-Base revisions
         id: resolve
@@ -136,7 +136,7 @@ jobs:
         include: ${{ fromJSON(needs.resolve.outputs.images) }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
@@ -185,7 +185,7 @@ jobs:
         flavor: [community, beta]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: enable i386 architecture
         run: |
