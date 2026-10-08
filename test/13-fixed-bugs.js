@@ -5,7 +5,8 @@ const {
     rega,
     regaLabel,
     initTest,
-    cleanupTest
+    cleanupTest,
+    waitForRega
 } = require('../lib/helper.js');
 
 require('should');
@@ -561,6 +562,101 @@ WriteLine(alarmVarObj.Channel());
                                 done();
                             }
                         });
+                    });
+                });
+            });
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/3179
+        describe('DayProfileEntry() index range tests', function () {
+            // (only the entries 0..23 of a day profile are persisted, thus
+            // DayProfileEntry() only accepts these indices)
+            const getProgram = 'object prg = dom.GetObject(ID_PROGRAMS).Get("DayProfileTest");';
+
+            it('should create a program', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object prg = dom.CreateObject(OT_PROGRAM, "DayProfileTest");
+dom.GetObject(ID_PROGRAMS).Add(prg.ID());
+prg.PrgInfo("DayProfileInfo");
+WriteLine(prg.DayTypeProgId());
+                `);
+                output.should.equal('65535\r\n');
+            });
+
+            it('should read/write the valid indices 0..23', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+${getProgram}
+integer i = 0;
+while (i < 24) {
+  prg.DayProfileEntry(i, (i + 1) * 100);
+  i = i + 1;
+}
+WriteLine(prg.DayProfileEntry(0) # " " # prg.DayProfileEntry(5) # " " # prg.DayProfileEntry(23));
+WriteLine(prg.DayProfileEntry(1, -5) # " " # prg.DayProfileEntry(1));
+                `);
+                output.should.equal('100 600 2400\r\ntrue -5\r\n');
+            });
+
+            it('should reject out-of-range indices without touching other program properties', async function () {
+                this.timeout(30_000);
+                // (49/51 accessed DayTypeProgId()/PrgInfo(), -1 the array
+                // header and 4294967301 was truncated to the index 5 before)
+                const warning = waitForRega(/WARNING: incorrect use of DayProfileEntry\(\): index must be >= 0 and < 24 \(49\)/, {buffered: false});
+                // (no unhandled rejection if ReGaHss crashes after the output check failed)
+                warning.catch(() => undefined);
+                const {output} = await rega.exec(`
+${getProgram}
+WriteLine(prg.DayProfileEntry(-1, 4711) # " " # prg.DayProfileEntry(-1));
+WriteLine(prg.DayProfileEntry(24, 4711) # " " # prg.DayProfileEntry(24));
+WriteLine(prg.DayProfileEntry(47, 4711) # " " # prg.DayProfileEntry(47));
+WriteLine(prg.DayProfileEntry(49, 4711) # " " # prg.DayProfileEntry(49));
+WriteLine(prg.DayProfileEntry(51, 4711) # " " # prg.DayProfileEntry(51));
+WriteLine(prg.DayProfileEntry(4294967301, 4711) # " " # prg.DayProfileEntry(4294967301) # " " # prg.DayProfileEntry(5));
+WriteLine(prg.DayTypeProgId() # " " # prg.PrgInfo());
+                `);
+                output.should.equal('false 0\r\nfalse 0\r\nfalse 0\r\nfalse 0\r\nfalse 0\r\nfalse 0 600\r\n65535 DayProfileInfo\r\n');
+                await warning;
+            });
+
+            it('should not crash on a huge index', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+${getProgram}
+WriteLine(prg.DayProfileEntry(21738156, 4711) # " " # prg.DayProfileEntry(21738156));
+integer i = 0;
+integer sum = 0;
+while (i < 100) {
+  sum = sum + prg.DayProfileEntry(i);
+  i = i + 1;
+}
+WriteLine(sum);
+                `);
+                output.should.equal('false 0\r\n29795\r\n');
+            });
+
+            describe('should persist the valid entries', function () {
+                it('saving regadom', async function () {
+                    this.timeout(30_000);
+                    await rega.exec('system.Save();');
+                });
+
+                // cleanup test environment (stop ReGaHss)
+                cleanupTest();
+
+                // init test environment (start ReGa)
+                initTest(false, null, null, true);
+
+                describe('running test', function () {
+                    it('should have restored the entries', async function () {
+                        this.timeout(30_000);
+                        const {output} = await rega.exec(`
+${getProgram}
+WriteLine(prg.DayProfileEntry(0) # " " # prg.DayProfileEntry(1) # " " # prg.DayProfileEntry(5) # " " # prg.DayProfileEntry(23));
+WriteLine(prg.DayTypeProgId() # " " # prg.PrgInfo());
+                        `);
+                        output.should.equal('100 -5 600 2400\r\n65535 DayProfileInfo\r\n');
                     });
                 });
             });
