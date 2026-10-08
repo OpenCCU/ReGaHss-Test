@@ -4,7 +4,7 @@
   "description": "Automated System Tests for ReGaHss",
   "private": true,
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22"
   },
   "scripts": {
     "test": "xo && mocha --colors",
