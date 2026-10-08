@@ -14,7 +14,8 @@ const {
     cleanupTest,
     simulator,
     waitForSim,
-    toTimestamp
+    toTimestamp,
+    requireRegaVersion
 } = require('../lib/helper.js');
 const {timerScript} = require('../lib/program-builder.js');
 const {
@@ -298,6 +299,8 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
 
             // see https://github.com/OpenCCU/OpenCCU/issues/2978
             it('should set the trigger information of the conditions like State() on ProgramExecute', async function () {
+                // fixed in ReGaHss R1.00.0388.0257
+                requireRegaVersion(this, 'R1.00.0388.0257');
                 this.timeout(60_000);
                 await createSysvars({'PC Trigger Var': 'number', 'PC Trigger Count': 'number', 'PC Trigger Exec': 'number'});
                 // ("Wenn": never true, executed by ProgramExecute() only; "Sonst wenn": always true)

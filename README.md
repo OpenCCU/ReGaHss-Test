@@ -104,6 +104,7 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
 | `REGA_JUNIT_FILE` | – | file to write a JUnit XML report to (`results/junit.xml` in the docker image) |
 | `REGA_WARNINGS_FILE` | – | file to append warnings of the test run to, e.g. known aborts of ReGaHss while stopping it (`results/warnings.md` in the docker image, shown in the summary) |
+| `REGA_SKIPPED_FILE` | – | file to append the tests to which were skipped because the ReGaHss under test is too old (`results/skipped.md` in the docker image, shown in the summary) |
 | `REGA_WORK_DIR` | `$TMPDIR/regahss-test` | base directory of the working directories of the ReGaHss instances |
 | `REGA_PORT_BASE` | `20000` | first port used by the ReGaHss instances (10 ports per parallel worker) |
 | `REGA_LINEBUF_LIB` | auto | preload library making the ReGaHss output line buffered (`src/linebuf.c` or coreutils' `libstdbuf.so`) |
@@ -147,6 +148,26 @@ describe('Running my-test.js [' + regaLabel + ']', function () {
     cleanupTest();
 });
 ```
+
+Regression tests of a ReGaHss fix declare the first ReGaHss version containing the fix with `requireRegaVersion()`. With an older ReGaHss (e.g. the `release` revision of OpenCCU-Base until OpenCCU updates it) they are skipped and listed in the summary instead of failing:
+
+```js
+// a single test
+it('should not crash on a huge index', async function () {
+    requireRegaVersion(this, 'R1.00.0388.0257');
+    // ...
+});
+
+// all tests of a suite (incl. nested suites)
+describe('DayProfileEntry() index range tests', function () {
+    before(function () {
+        requireRegaVersion(this, 'R1.00.0388.0257');
+    });
+    // ...
+});
+```
+
+`after()` hooks of a skipped suite still run (`before()` hooks registered after the skipping one do not).
 
 ### Script corpus
 
