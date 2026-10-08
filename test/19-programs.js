@@ -1,5 +1,5 @@
 /* global describe, it, before */
-/* eslint-disable prefer-arrow-callback, capitalized-comments, no-await-in-loop, unicorn/no-await-expression-member */
+/* eslint-disable prefer-arrow-callback, capitalized-comments, no-await-in-loop, max-nested-callbacks, unicorn/no-await-expression-member */
 
 // Program scenarios: programs and time modules are created via script (like
 // the WebUI does) with system variable and device conditions, comparison
@@ -14,7 +14,8 @@ const {
     cleanupTest,
     simulator,
     waitForSim,
-    toTimestamp
+    toTimestamp,
+    requireRegaVersion
 } = require('../lib/helper.js');
 const {timerScript} = require('../lib/program-builder.js');
 const {
@@ -294,6 +295,61 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 await until(() => value('PC Manual Count'), '1.000000');
                 const after = await exec('Write(dom.GetObject("PC Manual").ProgramLastExecuteTime().ToInteger());');
                 Number(after).should.be.aboveOrEqual(Number(before));
+            });
+
+            // see https://github.com/OpenCCU/OpenCCU/issues/2978
+            it('should set the trigger information of the conditions like State() on ProgramExecute', async function () {
+                // fixed in ReGaHss R1.00.0388.0257
+                requireRegaVersion(this, 'R1.00.0388.0257');
+                this.timeout(60_000);
+                await createSysvars({'PC Trigger Var': 'number', 'PC Trigger Count': 'number', 'PC Trigger Exec': 'number'});
+                // ("Wenn": never true, executed by ProgramExecute() only; "Sonst wenn": always true)
+                await createProgram({
+                    name: 'PC Trigger Info',
+                    rules: [
+                        {
+                            conditions: [[{
+                                sysvar: 'PC Trigger Var', compare: '>', value: 1000, trigger: 'update'
+                            }]], destinations: [increment('PC Trigger Exec')]
+                        },
+                        {
+                            conditions: [[{
+                                sysvar: 'PC Trigger Var', compare: '>=', value: 0, trigger: 'update'
+                            }]], destinations: [increment('PC Trigger Count')]
+                        }
+                    ]
+                });
+                const varId = await exec('Write(dom.GetObject("PC Trigger Var").ID());');
+                // trigger object of the conditions of the rule and its sub rule
+                const triggers = () => exec(`
+object r = dom.GetObject("PC Trigger Info").Rule();
+Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleCondition(0).DestinationObject());
+                `);
+
+                await set('PC Trigger Var', 1);
+                await until(() => value('PC Trigger Count'), '1.000000');
+                (await triggers()).should.equal(varId + ' ' + varId);
+
+                await exec('dom.GetObject("PC Trigger Info").State(1);');
+                await until(() => value('PC Trigger Count'), '2.000000');
+                (await triggers()).should.equal('65535 65535');
+
+                await set('PC Trigger Var', 2);
+                await until(() => value('PC Trigger Count'), '3.000000');
+                (await triggers()).should.equal(varId + ' ' + varId);
+
+                // (the trigger information is set when the program is executed after the delay)
+                await exec('dom.GetObject("PC Trigger Info").State(1, 300);');
+                await until(() => value('PC Trigger Count'), '4.000000');
+                (await triggers()).should.equal('65535 65535');
+
+                await set('PC Trigger Var', 3);
+                await until(() => value('PC Trigger Count'), '5.000000');
+                (await triggers()).should.equal(varId + ' ' + varId);
+
+                await exec('dom.GetObject("PC Trigger Info").ProgramExecute();');
+                await until(() => value('PC Trigger Exec'), '1.000000');
+                (await triggers()).should.equal('65535 65535');
             });
         });
 

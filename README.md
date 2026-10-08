@@ -73,7 +73,7 @@ Images built by the CI for the `master` branch (prebuilt libraries) are publishe
 
 ### Natively (disposable environments only)
 
-`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for the other architectures build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`, or with the cross compiler of the target architecture). The ARM binaries additionally need `qemu-user-static` and the runtime libraries of their architecture. The Y2038 tests use `src/timeshift.c` (`REGA_TIMESHIFT_LIB`):
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 22, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for the other architectures build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`, or with the cross compiler of the target architecture). The ARM binaries additionally need `qemu-user-static` and the runtime libraries of their architecture. The Y2038 tests use `src/timeshift.c` (`REGA_TIMESHIFT_LIB`):
 
 ```bash
 scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
@@ -104,6 +104,7 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `REGA_LOG_DIR` | – | directory to write the output of each ReGaHss instance to (`results/logs` in the docker image) |
 | `REGA_JUNIT_FILE` | – | file to write a JUnit XML report to (`results/junit.xml` in the docker image) |
 | `REGA_WARNINGS_FILE` | – | file to append warnings of the test run to, e.g. known aborts of ReGaHss while stopping it (`results/warnings.md` in the docker image, shown in the summary) |
+| `REGA_SKIPPED_FILE` | – | file to append the tests to which were skipped because the ReGaHss under test is too old (`results/skipped.md` in the docker image, shown in the summary) |
 | `REGA_WORK_DIR` | `$TMPDIR/regahss-test` | base directory of the working directories of the ReGaHss instances |
 | `REGA_PORT_BASE` | `20000` | first port used by the ReGaHss instances (10 ports per parallel worker) |
 | `REGA_LINEBUF_LIB` | auto | preload library making the ReGaHss output line buffered (`src/linebuf.c` or coreutils' `libstdbuf.so`) |
@@ -148,11 +149,31 @@ describe('Running my-test.js [' + regaLabel + ']', function () {
 });
 ```
 
+Regression tests of a ReGaHss fix declare the first ReGaHss version containing the fix with `requireRegaVersion()`. With an older ReGaHss (e.g. the `release` revision of OpenCCU-Base until OpenCCU updates it) they are skipped and listed in the summary instead of failing:
+
+```js
+// a single test
+it('should not crash on a huge index', async function () {
+    requireRegaVersion(this, 'R1.00.0388.0257');
+    // ...
+});
+
+// all tests of a suite (incl. nested suites)
+describe('DayProfileEntry() index range tests', function () {
+    before(function () {
+        requireRegaVersion(this, 'R1.00.0388.0257');
+    });
+    // ...
+});
+```
+
+`after()` hooks of a skipped suite still run (`before()` hooks registered after the skipping one do not).
+
 ### Script corpus
 
 `test/corpus/*.rega` contains ReGa scripts together with their expected output, the resulting variables and the script errors. Each file is executed by a ReGaHss instance of its own (`test/16-script-corpus.js`):
 
-```
+```text
 !! fixed-time: 2024-06-15 12:34:56 CEST
 
 #### string concatenation

@@ -1,4 +1,4 @@
-/* global describe, it */
+/* global describe, it, before, after */
 /* eslint-disable no-unused-vars, max-nested-callbacks, prefer-arrow-callback, capitalized-comments */
 
 const {
@@ -6,10 +6,14 @@ const {
     regaLabel,
     initTest,
     cleanupTest,
-    waitForRega
+    waitForRega,
+    regaInstance,
+    requireRegaVersion
 } = require('../lib/helper.js');
 
 require('should');
+
+const net = require('net');
 
 describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
     // initialize test environment
@@ -375,6 +379,93 @@ Write("10: ");WriteLine("1" + "2" + "3");
             });
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/3048
+        describe('IP data point State() tests', function () {
+            // TCP server receiving the texts sent by the IP data point (one
+            // connection per text)
+            const received = [];
+            let server = null;
+            let dpId = null;
+
+            // waits until the TCP server received count texts
+            async function receivedTexts(count) {
+                const deadline = Date.now() + 10_000;
+                while (received.length < count && Date.now() < deadline) {
+                    // eslint-disable-next-line no-await-in-loop
+                    await new Promise(resolve => {
+                        setTimeout(resolve, 50);
+                    });
+                }
+
+                return received;
+            }
+
+            // fixed in ReGaHss R1.00.0388.0257
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0257');
+            });
+
+            before(async function () {
+                server = net.createServer(socket => {
+                    const chunks = [];
+                    socket.on('data', chunk => chunks.push(chunk));
+                    socket.on('close', () => received.push(Buffer.concat(chunks).toString('latin1')));
+                    socket.on('error', () => undefined);
+                });
+                await new Promise(resolve => {
+                    server.listen(0, '127.0.0.1', resolve);
+                });
+            });
+
+            after(function () {
+                // (not created if the tests were skipped)
+                server?.close();
+            });
+
+            it('should create an IP data point', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object o = dom.CreateObject(OT_IPDP, "IPDP State Test");
+o.IpAddress("127.0.0.1");
+o.IpPort(${server.address().port});
+Write(o.ID());
+                `);
+                dpId = Number(output);
+                dpId.should.be.above(0);
+            });
+
+            it('should send the text of State() unchanged', async function () {
+                this.timeout(60_000);
+                // (texts which were rejected or converted because of the
+                // value type guessed from the text)
+                const texts = ['x<y', '<empty>', 'test', 'nachricht', 'dim 50%', '1,5', '12:00', 'Wert 2025-03-06'];
+                for (const [index, text] of texts.entries()) {
+                    // eslint-disable-next-line no-await-in-loop
+                    const {output} = await rega.exec(`Write(dom.GetObject(${dpId}).State("${text}"));`);
+                    output.should.equal('true', 'State("' + text + '")');
+                    // eslint-disable-next-line no-await-in-loop
+                    await receivedTexts(index + 1);
+                }
+
+                received.should.deepEqual(texts);
+            });
+
+            it('should send the text of a delayed State() unchanged', async function () {
+                this.timeout(30_000);
+                const count = received.length;
+                const {output} = await rega.exec(`Write(dom.GetObject(${dpId}).State("delayed <x>", 300));`);
+                output.should.equal('true');
+                const texts = await receivedTexts(count + 1);
+                texts.slice(count).should.deepEqual(['delayed <x>']);
+            });
+
+            it('should delete the IP data point', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`Write(dom.DeleteObject(dom.GetObject(${dpId})));`);
+                output.should.equal('true');
+            });
+        });
+
         describe('UserSharedObjects() tests', function (done) {
             it('should add fake objects', function (done) {
                 this.timeout(30000);
@@ -573,6 +664,11 @@ WriteLine(alarmVarObj.Channel());
             // DayProfileEntry() only accepts these indices)
             const getProgram = 'object prg = dom.GetObject(ID_PROGRAMS).Get("DayProfileTest");';
 
+            // fixed in ReGaHss R1.00.0388.0257
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0257');
+            });
+
             it('should create a program', async function () {
                 this.timeout(30_000);
                 const {output} = await rega.exec(`
@@ -660,6 +756,46 @@ WriteLine(prg.DayTypeProgId() # " " # prg.PrgInfo());
                     });
                 });
             });
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/3156
+        it('ChnNumber() should not log an error for channels without address', async function () {
+            // fixed in ReGaHss R1.00.0388.0257
+            requireRegaVersion(this, 'R1.00.0388.0257');
+            this.timeout(30_000);
+            const logged = [];
+            const untap = regaInstance().log.tap(line => {
+                if (/invalid (Address|channel address)/.test(line)) {
+                    logged.push(line);
+                }
+            });
+            try {
+                // (ReGaHss logs the response of a script after executing it)
+                const processed = waitForRega(/sends parsed file/, {buffered: false});
+                processed.catch(() => undefined);
+                // channels without address (e.g. the internal channels of the
+                // gateway device) have no channel number
+                const {output} = await rega.exec(`
+string sId;
+integer nEmpty = 0;
+boolean bAllMinusOne = true;
+integer nRF1 = 0;
+foreach (sId, dom.GetObject(ID_CHANNELS).EnumUsedIDs()) {
+  object oChn = dom.GetObject(sId);
+  if (oChn.Address() == "") {
+    nEmpty = nEmpty + 1;
+    if (oChn.ChnNumber() != -1) { bAllMinusOne = false; }
+  }
+  if (oChn.Address() == "BidCoS-RF:1") { nRF1 = oChn.ChnNumber(); }
+}
+WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # bAllMinusOne # " " # nRF1);
+                `);
+                output.should.equal('-1 true true 1\r\n');
+                await processed;
+                logged.should.deepEqual([]);
+            } finally {
+                untap();
+            }
         });
     });
 
