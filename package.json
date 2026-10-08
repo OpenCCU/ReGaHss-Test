@@ -4,7 +4,7 @@
   "description": "Automated System Tests for ReGaHss",
   "private": true,
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22"
   },
   "scripts": {
     "test": "xo && mocha --colors",
@@ -38,37 +38,102 @@
   },
   "homepage": "https://github.com/OpenCCU/ReGaHss-Test#readme",
   "dependencies": {
-    "binrpc": "^3.3.1",
+    "binrpc": "^4.3.0",
     "indent-string": "^5.0.0",
-    "mocha": "11.7.5",
+    "mocha": "12.0.3",
     "mocha-steps": "^1.3.0",
     "should": "^13.2.3"
   },
   "devDependencies": {
     "eslint": "^10.2.0",
-    "xo": "^2.0.2"
+    "xo": "^5.0.1"
   },
-  "xo": {
-    "space": 4,
-    "rules": {
-      "@stylistic/array-bracket-spacing": "off",
-      "@stylistic/comma-dangle": "off",
-      "@stylistic/max-len": "off",
-      "@stylistic/no-multi-spaces": "off",
-      "import-x/newline-after-import": "off",
-      "import-x/no-unassigned-import": "off",
-      "import-x/order": "off",
-      "logical-assignment-operators": "off",
-      "n/prefer-global/buffer": "off",
-      "n/prefer-global/process": "off",
-      "require-unicode-regexp": "off",
-      "unicorn/no-array-for-each": "off",
-      "unicorn/no-array-reverse": "off",
-      "unicorn/no-typeof-undefined": "off",
-      "unicorn/numeric-separators-style": "off",
-      "unicorn/prefer-module": "off",
-      "unicorn/prefer-node-protocol": "off",
-      "unicorn/prefer-string-raw": "off"
+  "xo": [
+    {
+      "space": 4,
+      "rules": {
+        "@eslint-community/eslint-comments/require-description": "off",
+        "@stylistic/array-bracket-spacing": "off",
+        "@stylistic/comma-dangle": "off",
+        "@stylistic/max-len": "off",
+        "@stylistic/no-mixed-operators": "off",
+        "@stylistic/no-multi-spaces": "off",
+        "import-x/newline-after-import": "off",
+        "import-x/no-unassigned-import": "off",
+        "import-x/order": "off",
+        "jsdoc/check-indentation": "off",
+        "jsdoc/check-line-alignment": "off",
+        "jsdoc/check-types": "off",
+        "jsdoc/informative-docs": "off",
+        "jsdoc/reject-any-type": "off",
+        "jsdoc/require-asterisk-prefix": "off",
+        "jsdoc/require-description": "off",
+        "jsdoc/require-param": "off",
+        "jsdoc/require-param-description": "off",
+        "jsdoc/require-returns-description": "off",
+        "logical-assignment-operators": "off",
+        "n/prefer-global/buffer": "off",
+        "n/prefer-global/process": "off",
+        "no-shadow": "off",
+        "regexp/control-character-escape": "off",
+        "regexp/no-control-character": "off",
+        "regexp/no-empty-lookarounds-assertion": "off",
+        "regexp/no-super-linear-backtracking": "off",
+        "regexp/no-super-linear-move": "off",
+        "regexp/no-unused-capturing-group": "off",
+        "regexp/prefer-named-capture-group": "off",
+        "regexp/sort-character-class-elements": "off",
+        "regexp/strict": "off",
+        "require-unicode-regexp": "off",
+        "unicorn/consistent-boolean-name": "off",
+        "unicorn/consistent-class-member-order": "off",
+        "unicorn/consistent-conditional-object-spread": "off",
+        "unicorn/max-nested-calls": "off",
+        "unicorn/no-array-for-each": "off",
+        "unicorn/no-array-reverse": "off",
+        "unicorn/no-break-in-nested-loop": "off",
+        "unicorn/no-computed-property-existence-check": "off",
+        "unicorn/no-declarations-before-early-exit": "off",
+        "unicorn/no-duplicate-loops": "off",
+        "unicorn/no-immediate-mutation": "off",
+        "unicorn/no-negated-array-predicate": "off",
+        "unicorn/no-return-array-push": "off",
+        "unicorn/no-typeof-undefined": "off",
+        "unicorn/no-undeclared-class-members": "off",
+        "unicorn/no-unsafe-string-replacement": "off",
+        "unicorn/numeric-separators-style": "off",
+        "unicorn/prefer-array-iterable-methods": "off",
+        "unicorn/prefer-continue": "off",
+        "unicorn/prefer-early-return": "off",
+        "unicorn/prefer-global-number-constants": "off",
+        "unicorn/prefer-iterator-helpers": "off",
+        "unicorn/prefer-iterator-to-array": "off",
+        "unicorn/prefer-module": "off",
+        "unicorn/prefer-node-protocol": "off",
+        "unicorn/prefer-number-coercion": "off",
+        "unicorn/prefer-number-is-safe-integer": "off",
+        "unicorn/prefer-private-class-fields": "off",
+        "unicorn/prefer-simple-condition-first": "off",
+        "unicorn/prefer-split-limit": "off",
+        "unicorn/prefer-string-raw": "off",
+        "unicorn/prefer-ternary": "off",
+        "unicorn/prefer-then-catch": "off",
+        "unicorn/prefer-unicode-code-point-escapes": "off",
+        "unicorn/require-array-sort-compare": "off",
+        "unicorn/single-line-block-comment-style": "off"
+      }
+    },
+    {
+      "files": [
+        "package.json"
+      ],
+      "rules": {
+        "package-json/dependency-version-range": "off",
+        "package-json/prefer-shorthand": "off",
+        "package-json/prefer-type-module": "off",
+        "package-json/sort-properties": "off",
+        "package-json/valid-fields": "off"
+      }
     }
-  }
+  ]
 }

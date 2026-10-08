@@ -73,7 +73,7 @@ Images built by the CI for the `master` branch (prebuilt libraries) are publishe
 
 ### Natively (disposable environments only)
 
-`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 20.19, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for the other architectures build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`, or with the cross compiler of the target architecture). The ARM binaries additionally need `qemu-user-static` and the runtime libraries of their architecture. The Y2038 tests use `src/timeshift.c` (`REGA_TIMESHIFT_LIB`):
+`scripts/install-regahss.sh` installs ReGaHss to `/bin`, `/etc`, `/www` and `/usr/local/lib/regahss` and therefore must only be used in disposable environments (VM, container). Requires node.js >= 22, [libfaketime](https://github.com/wolfcw/libfaketime) >= 0.9.13 built for the ReGaHss architecture (the 32-bit ReGaHss uses the glibc time64 ABI), the timezone `Europe/Berlin` and a library making the output of ReGaHss line buffered: for `x86_64-linux-gnu` the `libstdbuf.so` of coreutils is used automatically, for the other architectures build `src/linebuf.c` (`gcc -m32 -shared -fPIC -o /usr/local/lib/regahss-test/liblinebuf.so src/linebuf.c`, or with the cross compiler of the target architecture). The ARM binaries additionally need `qemu-user-static` and the runtime libraries of their architecture. The Y2038 tests use `src/timeshift.c` (`REGA_TIMESHIFT_LIB`):
 
 ```bash
 scripts/fetch-openccu-base.sh https://github.com/OpenCCU/OpenCCU-Base.git main x86_64-linux-gnu /tmp/openccu-base
@@ -173,7 +173,7 @@ describe('DayProfileEntry() index range tests', function () {
 
 `test/corpus/*.rega` contains ReGa scripts together with their expected output, the resulting variables and the script errors. Each file is executed by a ReGaHss instance of its own (`test/16-script-corpus.js`):
 
-```
+```text
 !! fixed-time: 2024-06-15 12:34:56 CEST
 
 #### string concatenation
