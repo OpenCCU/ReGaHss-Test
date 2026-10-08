@@ -51,6 +51,9 @@ rm -f "${REGA_JUNIT_FILE}"
 # warnings of the test suite (e.g. known aborts of ReGaHss while stopping it)
 export REGA_WARNINGS_FILE=${REGA_WARNINGS_FILE:-${RESULTS}/warnings.md}
 rm -f "${REGA_WARNINGS_FILE}"
+# tests skipped because the ReGaHss under test is too old (requireRegaVersion())
+export REGA_SKIPPED_FILE=${REGA_SKIPPED_FILE:-${RESULTS}/skipped.md}
+rm -f "${REGA_SKIPPED_FILE}"
 
 # working directories of the ReGaHss instances, which also receive core dumps
 # of ReGaHss if the kernel.core_pattern of the host is a relative file name
@@ -134,6 +137,14 @@ rc=$?
   fi
   if [[ ${REGA_LIBS} == asan ]]; then
     echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
+    echo
+  fi
+  if [[ -s ${REGA_SKIPPED_FILE} ]]; then
+    echo "### Skipped tests"
+    echo
+    echo "Tests of fixes not contained in the ReGaHss under test:"
+    echo
+    cat "${REGA_SKIPPED_FILE}"
     echo
   fi
   if [[ -s ${REGA_WARNINGS_FILE} ]]; then

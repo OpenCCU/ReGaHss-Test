@@ -7,7 +7,8 @@ const {
     initTest,
     cleanupTest,
     waitForRega,
-    regaInstance
+    regaInstance,
+    requireRegaVersion
 } = require('../lib/helper.js');
 
 require('should');
@@ -399,6 +400,11 @@ Write("10: ");WriteLine("1" + "2" + "3");
                 return received;
             }
 
+            // fixed in ReGaHss R1.00.0388.0257
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0257');
+            });
+
             before(async function () {
                 server = net.createServer(socket => {
                     const chunks = [];
@@ -412,7 +418,8 @@ Write("10: ");WriteLine("1" + "2" + "3");
             });
 
             after(function () {
-                server.close();
+                // (not created if the tests were skipped)
+                server?.close();
             });
 
             it('should create an IP data point', async function () {
@@ -657,6 +664,11 @@ WriteLine(alarmVarObj.Channel());
             // DayProfileEntry() only accepts these indices)
             const getProgram = 'object prg = dom.GetObject(ID_PROGRAMS).Get("DayProfileTest");';
 
+            // fixed in ReGaHss R1.00.0388.0257
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0257');
+            });
+
             it('should create a program', async function () {
                 this.timeout(30_000);
                 const {output} = await rega.exec(`
@@ -748,6 +760,8 @@ WriteLine(prg.DayTypeProgId() # " " # prg.PrgInfo());
 
         // see https://github.com/OpenCCU/OpenCCU/issues/3156
         it('ChnNumber() should not log an error for channels without address', async function () {
+            // fixed in ReGaHss R1.00.0388.0257
+            requireRegaVersion(this, 'R1.00.0388.0257');
             this.timeout(30_000);
             const logged = [];
             const untap = regaInstance().log.tap(line => {
