@@ -42,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -195,7 +195,7 @@ jobs:
       - name: set timezone to Europe/Berlin
         run: sudo timedatectl set-timezone Europe/Berlin
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
