@@ -6,7 +6,8 @@ const {
     regaLabel,
     initTest,
     cleanupTest,
-    waitForRega
+    waitForRega,
+    regaInstance
 } = require('../lib/helper.js');
 
 require('should');
@@ -660,6 +661,44 @@ WriteLine(prg.DayTypeProgId() # " " # prg.PrgInfo());
                     });
                 });
             });
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/3156
+        it('ChnNumber() should not log an error for channels without address', async function () {
+            this.timeout(30_000);
+            const logged = [];
+            const untap = regaInstance().log.tap(line => {
+                if (/invalid (Address|channel address)/.test(line)) {
+                    logged.push(line);
+                }
+            });
+            try {
+                // (ReGaHss logs the response of a script after executing it)
+                const processed = waitForRega(/sends parsed file/, {buffered: false});
+                processed.catch(() => undefined);
+                // channels without address (e.g. the internal channels of the
+                // gateway device) have no channel number
+                const {output} = await rega.exec(`
+string sId;
+integer nEmpty = 0;
+boolean bAllMinusOne = true;
+integer nRF1 = 0;
+foreach (sId, dom.GetObject(ID_CHANNELS).EnumUsedIDs()) {
+  object oChn = dom.GetObject(sId);
+  if (oChn.Address() == "") {
+    nEmpty = nEmpty + 1;
+    if (oChn.ChnNumber() != -1) { bAllMinusOne = false; }
+  }
+  if (oChn.Address() == "BidCoS-RF:1") { nRF1 = oChn.ChnNumber(); }
+}
+WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # bAllMinusOne # " " # nRF1);
+                `);
+                output.should.equal('-1 true true 1\r\n');
+                await processed;
+                logged.should.deepEqual([]);
+            } finally {
+                untap();
+            }
         });
     });
 
