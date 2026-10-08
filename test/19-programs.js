@@ -1,5 +1,5 @@
 /* global describe, it, before */
-/* eslint-disable prefer-arrow-callback, capitalized-comments, no-await-in-loop, unicorn/no-await-expression-member */
+/* eslint-disable prefer-arrow-callback, capitalized-comments, no-await-in-loop, max-nested-callbacks, unicorn/no-await-expression-member */
 
 // Program scenarios: programs and time modules are created via script (like
 // the WebUI does) with system variable and device conditions, comparison

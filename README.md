@@ -152,7 +152,7 @@ describe('Running my-test.js [' + regaLabel + ']', function () {
 
 `test/corpus/*.rega` contains ReGa scripts together with their expected output, the resulting variables and the script errors. Each file is executed by a ReGaHss instance of its own (`test/16-script-corpus.js`):
 
-```
+```text
 !! fixed-time: 2024-06-15 12:34:56 CEST
 
 #### string concatenation
