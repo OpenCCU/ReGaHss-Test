@@ -23,8 +23,7 @@ const {
     regaInstance,
     regaEmulator,
     initTest,
-    cleanupTest,
-    waitForRega
+    cleanupTest
 } = require('../lib/helper.js');
 const {
     random, binRequest, binrpcInput, xmlrpcInput, httpInput, randomScript, sendRaw
@@ -90,12 +89,8 @@ async function healthCheck() {
 describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
     initTest({sim: true});
 
+    // (initTest() waits until ReGaHss entered normal operation)
     describe('fuzzing', function () {
-        it('should wait for the RPC server of ReGaHss', async function () {
-            this.timeout(60_000 * slowdown);
-            await waitForRega(/ReGa entering normal operation/, {timeout: 50_000 * slowdown});
-        });
-
         for (const [index, target] of targets.entries()) {
             const targetSeed = (seed * 100) + index;
             it(`should survive ${iterations} ${target.name} inputs (seed ${targetSeed})`, async function () {
