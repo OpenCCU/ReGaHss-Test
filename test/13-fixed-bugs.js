@@ -797,6 +797,80 @@ WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # 
                 untap();
             }
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/2614 (also #2616,
+        // #2617, #2619 and #2620)
+        describe('foreach() loop variable type change tests', function () {
+            // not fixed yet, expected in ReGaHss R1.00.0388.0259 (adjust to
+            // the version actually containing the fix)
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0259');
+            });
+
+            // (a value of another type assigned to the loop variable of a
+            // foreach() over an integer count aborted the loop and left a raw
+            // internal value in the loop variable: a pointer for objects and
+            // idarrays, the bit pattern for times and reals)
+            const values = [
+                ['an object', 'object val = dom.GetObject(1);'],
+                ['an idarray', 'idarray val = dom.GetObject("Admin").UserTempViewIDs3(); val.Add(1);'],
+                ['an empty idarray', 'idarray val = dom.GetObject("Admin").UserTempViewIDs3(); val.RemoveAll();'],
+                ['a time', 'time val = @2036-01-02 03:04:05@;'],
+                ['a real', 'real val = 3.0;']
+            ];
+
+            for (const [description, declaration] of values) {
+                it('should not expose internal values after assigning ' + description + ' to the loop variable', async function () {
+                    this.timeout(30_000);
+                    const {output} = await rega.exec(`
+${declaration}
+integer count = 0;
+string loopVar;
+foreach (loopVar, 10) {
+  count = count + 1;
+  if (count == 5) { loopVar = val; }
+}
+WriteLine(count # " " # loopVar.Type() # " " # loopVar);
+dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
+                    `);
+                    const [count, type, value] = output.trim().split(' ');
+                    // (the loop must not stop at the assignment, as it did before)
+                    Number(count).should.be.within(6, 10);
+                    if (type === 'integer') {
+                        // (the loop counter, not a pointer or bit pattern)
+                        Number(value).should.be.within(0, 11);
+                    }
+                });
+            }
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/2692
+        describe('system.SyslogIPAddress() tests', function () {
+            // not fixed yet, expected in ReGaHss R1.00.0388.0259 (adjust to
+            // the version actually containing the fix)
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0259');
+            });
+
+            // (these values crashed ReGaHss with a SIGSEGV)
+            for (const value of ['-1', '"255.255.255.255"', '""']) {
+                it('should not crash on SyslogIPAddress(' + value + ')', async function () {
+                    this.timeout(30_000);
+                    await rega.exec(`system.SyslogIPAddress(${value});`);
+                    const {output} = await rega.exec('WriteLine("alive");');
+                    output.should.equal('alive\r\n');
+                });
+            }
+
+            it('should still set a valid address', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+system.SyslogIPAddress("127.0.0.1");
+WriteLine(system.SyslogIPAddress());
+                `);
+                output.should.equal('127.0.0.1\r\n');
+            });
+        });
     });
 
     // cleanup test environment
