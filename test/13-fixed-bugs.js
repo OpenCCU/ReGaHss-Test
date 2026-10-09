@@ -871,6 +871,66 @@ WriteLine(system.SyslogIPAddress());
                 output.should.equal('127.0.0.1\r\n');
             });
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/2950
+        describe('IsTypeOf() of enumerations tests', function () {
+            // fixed in ReGaHss R1.00.0388.0259
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0259');
+            });
+
+            // (root enumerations, the type of their elements and their own type)
+            const enumerations = [
+                ['ID_DEVICES', 'OT_DEVICE', 'OT_DEVICES'],
+                ['ID_CHANNELS', 'OT_CHANNEL', 'OT_CHANNELS'],
+                ['ID_DATAPOINTS', 'OT_DP', 'OT_DPS'],
+                ['ID_USERS', 'OT_USER', 'OT_USERS'],
+                ['ID_RULES', 'OT_RULE', 'OT_RULES'],
+                ['ID_INTERFACES', 'OT_INTERFACE', 'OT_INTERFACES']
+            ];
+
+            it('should not report enumerations to be of the type of their elements', async function () {
+                this.timeout(30_000);
+                const script = enumerations.map(([id, type, enumType]) => `
+o = dom.GetObject(${id});
+WriteLine("${id} " # o.IsTypeOf(${type}) # " " # o.IsTypeOf(${enumType}) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_OBJECT));`).join('');
+                const {output} = await rega.exec('object o;' + script);
+                output.should.equal(enumerations.map(([id]) => id + ' false true true true\r\n').join(''));
+            });
+
+            it('should still report the elements to be of their type', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object o = dom.GetObject(ID_GW_CHANNEL);
+WriteLine("channel " # o.IsTypeOf(OT_CHANNEL) # " " # o.IsTypeOf(OT_CHANNELS) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_OBJECT));
+o = dom.GetObject(o.Device());
+WriteLine("device " # o.IsTypeOf(OT_DEVICE) # " " # o.IsTypeOf(OT_DEVICES) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_OBJECT));
+o = dom.GetObject(ID_PRESENT);
+WriteLine("dp " # o.IsTypeOf(OT_DP) # " " # o.IsTypeOf(OT_DPS) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_VARDP));
+o = dom.GetObject(dom.GetObject(ID_USERS).EnumUsedIDs().StrValueByIndex("\\t", 0));
+WriteLine("user " # o.IsTypeOf(OT_USER) # " " # o.IsTypeOf(OT_USERS) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_OBJECT));
+o = dom.GetObject(dom.GetObject(ID_INTERFACES).EnumUsedIDs().StrValueByIndex("\\t", 0));
+WriteLine("interface " # o.IsTypeOf(OT_INTERFACE) # " " # o.IsTypeOf(OT_INTERFACES) # " " # o.IsTypeOf(OT_ENUM) # " " # o.IsTypeOf(OT_OBJECT));
+                `);
+                output.should.equal('channel true false false true\r\ndevice true false false true\r\ndp true false false true\r\nuser true false false true\r\ninterface true false false true\r\n');
+            });
+
+            it('should not crash on a delayed State() of an enumeration', async function () {
+                this.timeout(30_000);
+                // (the scheduler executed it as State() of a data point or
+                // channel, which crashed ReGaHss for ID_DATAPOINTS)
+                const rejected = waitForRega(/execution of scheduler only allowed on DP, CHANNEL or PROGRAM - id= 4\b/, {buffered: false});
+                rejected.catch(() => undefined);
+                const {output} = await rega.exec(`
+WriteLine(dom.GetObject(ID_DATAPOINTS).State(1, 300));
+WriteLine(dom.GetObject(ID_CHANNELS).State(1, 300));
+                `);
+                output.should.equal('true\r\ntrue\r\n');
+                await rejected;
+                const alive = await rega.exec('WriteLine(dom.GetObject(ID_DATAPOINTS).Count() > 0);');
+                alive.output.should.equal('true\r\n');
+            });
+        });
     });
 
     // cleanup test environment
