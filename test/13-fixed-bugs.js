@@ -918,15 +918,19 @@ WriteLine("interface " # o.IsTypeOf(OT_INTERFACE) # " " # o.IsTypeOf(OT_INTERFAC
             it('should not crash on a delayed State() of an enumeration', async function () {
                 this.timeout(30_000);
                 // (the scheduler executed it as State() of a data point or
-                // channel, which crashed ReGaHss for ID_DATAPOINTS)
-                const rejected = waitForRega(/execution of scheduler only allowed on DP, CHANNEL or PROGRAM - id= 4\b/, {buffered: false});
-                rejected.catch(() => undefined);
+                // channel, which crashed ReGaHss for ID_DATAPOINTS; wait for
+                // both scheduler jobs before checking that ReGaHss still runs)
+                const rejected = [5, 4].map(id => waitForRega(new RegExp(`execution of scheduler only allowed on DP, CHANNEL or PROGRAM - id= ${id}\\b`), {buffered: false}));
+                for (const promise of rejected) {
+                    promise.catch(() => undefined);
+                }
+
                 const {output} = await rega.exec(`
 WriteLine(dom.GetObject(ID_DATAPOINTS).State(1, 300));
 WriteLine(dom.GetObject(ID_CHANNELS).State(1, 300));
                 `);
                 output.should.equal('true\r\ntrue\r\n');
-                await rejected;
+                await Promise.all(rejected);
                 const alive = await rega.exec('WriteLine(dom.GetObject(ID_DATAPOINTS).Count() > 0);');
                 alive.output.should.equal('true\r\n');
             });
