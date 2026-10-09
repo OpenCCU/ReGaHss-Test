@@ -834,7 +834,8 @@ WriteLine(count # " " # loopVar.Type() # " " # loopVar);
 dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
                     `);
                     const [count, type, value] = output.trim().split(' ');
-                    Number(count).should.be.within(5, 10);
+                    // (the loop must not stop at the assignment, as it did before)
+                    Number(count).should.be.within(6, 10);
                     if (type === 'integer') {
                         // (the loop counter, not a pointer or bit pattern)
                         Number(value).should.be.within(0, 11);
