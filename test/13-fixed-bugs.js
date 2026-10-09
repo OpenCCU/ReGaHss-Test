@@ -846,19 +846,25 @@ dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
 
         // see https://github.com/OpenCCU/OpenCCU/issues/2692
         describe('system.SyslogIPAddress() tests', function () {
-            // not fixed yet, expected in ReGaHss R1.00.0388.0259 (adjust to
-            // the version actually containing the fix)
+            // fixed in ReGaHss R1.00.0388.0259
             before(function () {
                 requireRegaVersion(this, 'R1.00.0388.0259');
             });
 
-            // (these values crashed ReGaHss with a SIGSEGV)
-            for (const value of ['-1', '"255.255.255.255"', '""']) {
-                it('should not crash on SyslogIPAddress(' + value + ')', async function () {
+            // (these values enabled logging via SYSLOG to the broadcast
+            // address, which crashed ReGaHss with a SIGSEGV; invalid values
+            // and the broadcast address now disable logging via SYSLOG)
+            for (const value of ['-1', '"255.255.255.255"', '""', '"abc"']) {
+                it('should not crash on SyslogIPAddress(' + value + ') and disable logging via SYSLOG', async function () {
                     this.timeout(30_000);
-                    await rega.exec(`system.SyslogIPAddress(${value});`);
-                    const {output} = await rega.exec('WriteLine("alive");');
-                    output.should.equal('alive\r\n');
+                    const {output} = await rega.exec(`
+system.SyslogIPAddress("127.0.0.1");
+system.SyslogIPAddress(${value});
+WriteLine(system.SyslogIPAddress());
+                    `);
+                    output.should.equal('0.0.0.0\r\n');
+                    const alive = await rega.exec('WriteLine("alive");');
+                    alive.output.should.equal('alive\r\n');
                 });
             }
 
@@ -869,6 +875,15 @@ system.SyslogIPAddress("127.0.0.1");
 WriteLine(system.SyslogIPAddress());
                 `);
                 output.should.equal('127.0.0.1\r\n');
+            });
+
+            it('should disable logging via SYSLOG with 0.0.0.0', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+system.SyslogIPAddress("0.0.0.0");
+WriteLine(system.SyslogIPAddress());
+                `);
+                output.should.equal('0.0.0.0\r\n');
             });
         });
 
