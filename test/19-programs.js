@@ -303,7 +303,10 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 requireRegaVersion(this, 'R1.00.0388.0257');
                 this.timeout(60_000);
                 await createSysvars({'PC Trigger Var': 'number', 'PC Trigger Count': 'number', 'PC Trigger Exec': 'number'});
-                // ("Wenn": never true, executed by ProgramExecute() only; "Sonst wenn": always true)
+                // ("Wenn": never true, executed by ProgramExecute() only; "Sonst wenn":
+                // true for the values set below, but not for the initial value 0,
+                // as the update event of its State(0) in createSysvars() can
+                // arrive after the program was created and execute it)
                 await createProgram({
                     name: 'PC Trigger Info',
                     rules: [
@@ -314,7 +317,7 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                         },
                         {
                             conditions: [[{
-                                sysvar: 'PC Trigger Var', compare: '>=', value: 0, trigger: 'update'
+                                sysvar: 'PC Trigger Var', compare: '>', value: 0, trigger: 'update'
                             }]], destinations: [increment('PC Trigger Count')]
                         }
                     ]
