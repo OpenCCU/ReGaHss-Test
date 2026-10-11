@@ -801,10 +801,10 @@ WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # 
         // see https://github.com/OpenCCU/OpenCCU/issues/2614 (also #2616,
         // #2617, #2619 and #2620)
         describe('foreach() loop variable type change tests', function () {
-            // not fixed yet, expected in ReGaHss R1.00.0388.0259 (adjust to
-            // the version actually containing the fix)
+            // not fixed in ReGaHss R1.00.0388.0259, expected in
+            // R1.00.0388.0260
             before(function () {
-                requireRegaVersion(this, 'R1.00.0388.0259');
+                requireRegaVersion(this, 'R1.00.0388.0260');
             });
 
             // (a value of another type assigned to the loop variable of a
