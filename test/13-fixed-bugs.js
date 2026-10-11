@@ -798,50 +798,76 @@ WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # 
             }
         });
 
-        // see https://github.com/OpenCCU/OpenCCU/issues/2614 (also #2616,
-        // #2617, #2619 and #2620)
-        describe('foreach() loop variable type change tests', function () {
-            // not fixed in ReGaHss R1.00.0388.0259, expected in
-            // R1.00.0388.0260
+        // see https://github.com/OpenCCU/OpenCCU/issues/2614 (also #2613,
+        // #2615, #2616, #2617, #2619, #2620 and #2622)
+        describe('foreach() loop variable tests', function () {
+            // fixed in ReGaHss R1.00.0388.0260
             before(function () {
                 requireRegaVersion(this, 'R1.00.0388.0260');
             });
 
+            // runs foreach(x, 10) with the given statement in the loop body,
+            // outputs the iterations and the loop variable after the loop
+            async function runForEach(declaration, statement) {
+                const {output} = await rega.exec(`
+${declaration}
+string out = "";
+integer count = 0;
+string x;
+foreach (x, 10) {
+  count = count + 1;
+  out = out # x # " ";
+  ${statement}
+}
+WriteLine(out # "| " # count # " " # x.Type() # " " # x);
+dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
+                `);
+                return output;
+            }
+
             // (a value of another type assigned to the loop variable of a
-            // foreach() over an integer count aborted the loop and left a raw
-            // internal value in the loop variable: a pointer for objects and
-            // idarrays, the bit pattern for times and reals)
+            // foreach() over an integer count aborted or restarted the loop
+            // and left a raw internal value in the loop variable: a pointer
+            // for objects and idarrays, the bit pattern for times and reals;
+            // the loop now continues with the next count)
             const values = [
                 ['an object', 'object val = dom.GetObject(1);'],
+                ['a null object', 'object val;'],
                 ['an idarray', 'idarray val = dom.GetObject("Admin").UserTempViewIDs3(); val.Add(1);'],
                 ['an empty idarray', 'idarray val = dom.GetObject("Admin").UserTempViewIDs3(); val.RemoveAll();'],
+                ['a null idarray', 'idarray val;'],
                 ['a time', 'time val = @2036-01-02 03:04:05@;'],
-                ['a real', 'real val = 3.0;']
+                ['a real', 'real val = 3.0;'],
+                ['a string', 'string val = "7";']
             ];
 
             for (const [description, declaration] of values) {
-                it('should not expose internal values after assigning ' + description + ' to the loop variable', async function () {
+                it('should continue the loop after assigning ' + description + ' to the loop variable', async function () {
                     this.timeout(30_000);
-                    const {output} = await rega.exec(`
-${declaration}
-integer count = 0;
-string loopVar;
-foreach (loopVar, 10) {
-  count = count + 1;
-  if (count == 5) { loopVar = val; }
-}
-WriteLine(count # " " # loopVar.Type() # " " # loopVar);
-dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
-                    `);
-                    const [count, type, value] = output.trim().split(' ');
-                    // (the loop must not stop at the assignment, as it did before)
-                    Number(count).should.be.within(6, 10);
-                    if (type === 'integer') {
-                        // (the loop counter, not a pointer or bit pattern)
-                        Number(value).should.be.within(0, 11);
-                    }
+                    const output = await runForEach(declaration, 'if (count == 5) { x = val; }');
+                    output.should.equal('1 2 3 4 5 6 7 8 9 10 | 10 integer 11\r\n');
                 });
             }
+
+            // (like in C, an integer assigned to the loop variable sets the
+            // counter, and the loop variable is one above the count after the
+            // loop ended)
+            it('should continue with an integer assigned to the loop variable', async function () {
+                this.timeout(30_000);
+                const jump = await runForEach('', 'if (count == 3) { x = 7; }');
+                jump.should.equal('1 2 3 8 9 10 | 6 integer 11\r\n');
+                const restart = await runForEach('', 'if (count == 3) { x = 0; }');
+                restart.should.equal('1 2 3 1 2 3 4 5 6 7 8 9 10 | 13 integer 11\r\n');
+                const end = await runForEach('', 'if (count == 3) { x = 100; }');
+                end.should.equal('1 2 3 | 3 integer 101\r\n');
+            });
+
+            // (the loop variable was incremented once more after break)
+            it('should keep the value of the loop variable after break', async function () {
+                this.timeout(30_000);
+                const output = await runForEach('', 'if (count == 5) { break; }');
+                output.should.equal('1 2 3 4 5 | 5 integer 5\r\n');
+            });
         });
 
         // see https://github.com/OpenCCU/OpenCCU/issues/2692
