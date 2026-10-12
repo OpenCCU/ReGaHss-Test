@@ -798,6 +798,73 @@ WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # 
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2670 and
+        // https://github.com/OpenCCU/OpenCCU/issues/2669
+        describe('UTC time output and Format() tests', function () {
+            // fixed in ReGaHss R1.00.0388.0261
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0261');
+            });
+
+            // (UTC time values like currenttime were output as local time,
+            // while e.g. Hour() returned the UTC hour)
+            it('should output UTC time values as UTC', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+time t = currenttime;
+WriteLine(t.IsLocalTime());
+WriteLine(t.Format("%Z %z"));
+WriteLine(t.Format("%H").ToInteger() == t.Hour());
+WriteLine(t.ToString().Substr(11, 2).ToInteger() == t.Hour());
+integer d = localtime.ToInteger() - t.ToInteger();
+WriteLine((d >= 0) && (d <= 2));
+                `);
+                output.should.equal('0\r\nGMT +0000\r\ntrue\r\ntrue\r\ntrue\r\n');
+            });
+
+            it('should still output local time values as local time', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+time t = localtime;
+WriteLine(t.IsLocalTime());
+WriteLine(t.Format("%H").ToInteger() == t.Hour());
+WriteLine(t.ToString().Substr(11, 2).ToInteger() == t.Hour());
+t = @2024-01-02 03:04:05@;
+WriteLine(t # " " # t.IsLocalTime());
+integer i = 1704164645;
+WriteLine(i.ToTime().Format("%F %T") == i.ToTime().ToString());
+                `);
+                output.should.equal('1\r\ntrue\r\ntrue\r\n2024-01-02 03:04:05 1\r\ntrue\r\n');
+            });
+
+            // (Format() without a format aborted the script)
+            it('should return the time like ToString() for Format() without a format', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+time t = @2024-01-02 03:04:05@;
+WriteLine(t.Format());
+WriteLine(t.Format() == t.ToString());
+t = currenttime;
+WriteLine(t.Format() == t.ToString());
+WriteLine("end");
+                `);
+                output.should.equal('2024-01-02 03:04:05\r\ntrue\r\ntrue\r\nend\r\n');
+            });
+
+            // (the time 0 of an invalid conversion is still output as local
+            // time)
+            it('should keep the output of an invalid string to time conversion', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+time t = "abc".ToTime();
+integer i = 0;
+WriteLine(t.IsLocalTime() # " " # t.ToInteger());
+WriteLine(t.ToString() == i.ToTime().ToString());
+                `);
+                output.should.equal('1 0\r\ntrue\r\n');
+            });
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2614 (also #2613,
         // #2615, #2616, #2617, #2619, #2620 and #2622)
         describe('foreach() loop variable tests', function () {
