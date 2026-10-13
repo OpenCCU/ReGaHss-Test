@@ -294,14 +294,6 @@ ReGaHss is started with a prebuilt `homematic.regadom` which contains the follow
 * Key16Key17 - on BidCoS-RF:16 PRESS_LONG => BidCoS-RF:17 PRESS_LONG
 * Key1 - on BidCos-RF:1 PRESS_SHORT => BidCoS-RF:2 PRESS_LONG
 
-## Roadmap
-
-* **Phase 0/1** (done): pinned dependencies, node.js 22, docker based test environment, switch from OCCU to OpenCCU-Base
-* **Phase 2** (done): build `libXmlRpc`/`libxmlparser` from OpenCCU-Base sources and test ReGaHss against them (incl. ASan/UBSan builds, ABI checks via `abidiff`, gcov coverage), reusable workflow to test OpenCCU-Base pull requests
-* **Phase 3** (done): test harness rework (`ReGaInstance` with per-instance working directories/ports, parallel execution, crash detection, graceful shutdown tests, own script/HTTP client instead of `request`/`homematic-rega`, accelerated faketime timer tests, JUnit reports, core dumps, log artifacts)
-* **Phase 4** (done): broader test coverage (data driven script test corpus with record mode, differential tests against the previous ReGaHss release, object model/persistence round trip tests, own BidCos-RF/HmIP-RF/VirtualDevices interface simulator with device lifecycle and RPC tests, program/time module scenarios incl. astro time modules at other locations)
-* **Phase 5** (done): aarch64/armhf via QEMU (`qemu-user-static`), Y2038 tests on the 32-bit platforms (`src/timeshift.c`), seeded XML-RPC/BIN-RPC/HTTP/script fuzzing (`lib/fuzzer.js`, found [OpenCCU/OpenCCU#4384](https://github.com/OpenCCU/OpenCCU/issues/4384)), long-running stability/memory soak tests
-
 ## Links
 
 * [OpenCCU](https://github.com/OpenCCU/OpenCCU)
