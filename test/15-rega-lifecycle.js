@@ -1,5 +1,5 @@
-/* global describe, step */
-/* eslint-disable prefer-arrow-callback */
+/* global describe, step, before */
+/* eslint-disable prefer-arrow-callback, capitalized-comments */
 
 // Tests the start/stop behaviour of ReGaHss (graceful shutdown on SIGTERM)
 // and the crash detection of the test harness.
@@ -8,7 +8,8 @@ const {
     regaLabel,
     indent,
     ReGaInstance,
-    ReGaCrashError
+    ReGaCrashError,
+    requireRegaVersion
 } = require('../lib/helper.js');
 
 require('should');
@@ -69,6 +70,45 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
             output.should.equal('second\r\n');
             await instance.stop();
         });
+    });
+
+    // (ReGaHss cancelled its runtime threads on SIGTERM instead of waiting for
+    // them and freed e.g. the scheduler list while other threads still used
+    // it, so it sporadically crashed, aborted ("terminate called without an
+    // active exception") or hung instead of exiting)
+    describe('graceful shutdown with pending scheduler entries', function () {
+        // fixed in ReGaHss R1.00.0388.0262
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0262');
+        });
+
+        for (const [i, delay] of [0, 400, 1200].entries()) {
+            step('should terminate on SIGTERM within 30s (run ' + (i + 1) + ')', async function () {
+                this.slow(20_000);
+                this.timeout(90_000);
+                const instance = new ReGaInstance({name: 'shutdown-scheduler'});
+                await instance.start({testFile: __filename});
+                await instance.ready();
+                await instance.waitFor(/ReGa entering normal operation/);
+                // (delayed State() calls add elements to the scheduler list)
+                const {output} = await instance.exec(`
+integer n = 0;
+while (n < 20) {
+  dom.GetObject(ID_PRESENT).State(n % 2, 1);
+  n = n + 1;
+}
+WriteLine("ok");
+                `);
+                output.should.equal('ok\r\n');
+                await new Promise(resolve => {
+                    setTimeout(resolve, delay);
+                });
+                const result = await instance.stop({signal: 'SIGTERM', timeout: 30_000});
+                result.killed.should.be.false('ReGaHss did not terminate within 30s, last log lines:\n' + instance.tail(20));
+                ReGaInstance.isCrash(result).should.be.false('ReGaHss crashed on SIGTERM (' + (result.signal || 'exit code ' + result.code) + '), last log lines:\n' + instance.tail(20));
+                (result.signal === null).should.be.true('ReGaHss was terminated by signal ' + result.signal);
+            });
+        }
     });
 
     describe('crash detection of the test harness', function () {
