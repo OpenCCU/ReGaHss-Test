@@ -9,8 +9,11 @@ const {
     cleanupTest,
     rpcCall,
     rpcWrite,
+    regaInstance,
+    requireXmlRpcVersion,
     waitForRega
 } = require('../lib/helper.js');
+const {sendRaw} = require('../lib/fuzzer.js');
 
 require('should');
 
@@ -36,6 +39,75 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
             const logged = waitForRega(/XmlRpcServerConnection::readRequest: EOF while reading request/, {buffered: false});
             await rpcWrite(buf);
             await logged;
+        });
+    });
+
+    describe('running rega rpc server nesting test...', function () {
+        // raw XML-RPC request with a parameter nested depth arrays deep
+        function xmlRpcNested(depth) {
+            const body = '<?xml version="1.0"?><methodCall><methodName>system.listMethods</methodName><params><param><value>'
+                + '<array><data><value>'.repeat(depth) + '<i4>1</i4>' + '</value></data></array>'.repeat(depth)
+                + '</value></param></params></methodCall>';
+            return 'POST / HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: text/xml\r\nContent-Length: ' + body.length + '\r\n\r\n' + body;
+        }
+
+        // raw BIN-RPC request with a parameter nested depth arrays deep
+        // (the parameter list itself is an array as well)
+        function binRpcNested(depth) {
+            const int32 = n => {
+                const buf = Buffer.alloc(4);
+                buf.writeInt32BE(n);
+                return buf;
+            };
+
+            const method = Buffer.from('system.listMethods', 'latin1');
+            const array = Buffer.concat([int32(0x1_00), int32(1)]);
+            const body = Buffer.concat([int32(method.length), method, int32(1), Buffer.alloc(array.length * depth, array), int32(0x1), int32(1)]);
+            return Buffer.concat([Buffer.from('Bin\u0000', 'latin1'), int32(body.length), body]);
+        }
+
+        // sends a raw request to the RPC port and returns the response
+        async function sendRequest(request, timeout) {
+            const response = await sendRaw(regaInstance().ports.xmlrpc, request, timeout);
+            return response.toString('latin1');
+        }
+
+        // ReGaHss still running and answering RPC calls
+        async function shouldStillRespond() {
+            regaInstance().running.should.be.true();
+            const result = await promisify(rpcCall)('system.listMethods', []);
+            result.should.containEql('system.multicall');
+        }
+
+        it('should reject a nested system.multicall', async function () {
+            await requireXmlRpcVersion(this, '0.11');
+            const result = await promisify(rpcCall)('system.multicall', [[{methodName: 'system.multicall', params: [[]]}]]);
+            JSON.stringify(result).should.containEql('recursive calls are not allowed');
+            await shouldStillRespond();
+        });
+
+        it('should accept moderately nested BIN-RPC parameters', async function () {
+            await requireXmlRpcVersion(this, '0.12');
+            const response = await sendRequest(binRpcNested(32), 10_000);
+            response.should.containEql('system.multicall');
+            response.should.not.containEql('faultCode');
+        });
+
+        it('should not crash on deeply nested XML-RPC parameters', async function () {
+            await requireXmlRpcVersion(this, '0.12');
+            this.timeout(30_000);
+            const response = await sendRequest(xmlRpcNested(100_000), 20_000);
+            response.should.startWith('HTTP/1.1 200');
+            await shouldStillRespond();
+        });
+
+        it('should reject deeply nested BIN-RPC parameters', async function () {
+            await requireXmlRpcVersion(this, '0.12');
+            this.timeout(30_000);
+            const response = await sendRequest(binRpcNested(100_000), 20_000);
+            response.should.startWith('Bin');
+            response.should.containEql('faultCode');
+            await shouldStillRespond();
         });
     });
 
