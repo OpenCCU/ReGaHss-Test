@@ -798,6 +798,41 @@ WriteLine(dom.GetObject(ID_GW_CHANNEL).ChnNumber() # " " # (nEmpty > 0) # " " # 
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2640
+        describe('etUserPages enumerations tests', function () {
+            // fixed in ReGaHss R1.00.0388.0262
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0262');
+            });
+
+            // (a license check for the unreleased user pages feature hid
+            // all enumerations of the type etUserPages)
+            it('should return ID_USERPAGES', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object o = dom.GetObject(ID_USERPAGES);
+WriteLine(o.ID() # " " # o.EnumType() # " " # o.IsTypeOf(OT_ENUM));
+                `);
+                output.should.equal('8 23 true\r\n');
+            });
+
+            // (they could neither be fetched nor deleted and remained as
+            // inaccessible objects in the DOM)
+            it('should get and delete an enumeration of the type etUserPages', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object o = dom.CreateObject(OT_ENUM, "UserPagesTest");
+integer id = o.ID();
+WriteLine(o.EnumType(etUserPages));
+object g = dom.GetObject(id);
+WriteLine(g.Name() # " " # g.EnumType());
+WriteLine(dom.DeleteObject(id));
+WriteLine(dom.GetObject(id));
+                `);
+                output.should.equal('true\r\nUserPagesTest 23\r\ntrue\r\nnull\r\n');
+            });
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2670 and
         // https://github.com/OpenCCU/OpenCCU/issues/2669
         describe('UTC time output and Format() tests', function () {
