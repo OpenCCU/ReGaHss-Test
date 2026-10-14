@@ -36,6 +36,10 @@ docker run --rm --init -e REGA_JOBS=4 -e REGA_FAKETIME_RATE=1 -v "$PWD/results:/
 docker build -t regahss-test:asan --build-arg REGA_LIBS=asan .
 docker run --rm --init -v "$PWD/results:/results" regahss-test:asan
 
+# test another ReGaHss binary (e.g. an own build, also instrumented with
+# ASan/UBSan) instead of the one of OpenCCU-Base (path in the build context)
+docker build -t regahss-test:custom --build-arg REGA_LIBS=asan --build-arg REGA_BINARY=regahss-binary/ReGaHss .
+
 # run only specific test files
 docker run --rm --init regahss-test npx mocha test/02-script-doku-teil1.js test/13-fixed-bugs.js
 
@@ -56,6 +60,7 @@ Build arguments:
 | `BASE_REPO` | `https://github.com/OpenCCU/OpenCCU-Base.git` | OpenCCU-Base repository (e.g. a fork) |
 | `REF_BASE_REF` | – | OpenCCU-Base revision with a reference ReGaHss for differential tests of the script corpus (the CI uses the revision before the last change of the ReGaHss binary) |
 | `REGA_LIBS` | `prebuilt` | `libXmlRpc`/`libxmlparser` to run ReGaHss with: `prebuilt` (shipped with OpenCCU-Base), `source` (release build from the OpenCCU-Base sources, incl. informational `abidiff` report vs. the prebuilt libraries) or `asan` (debug build with ASan/UBSan and gcov coverage, `x86_64-linux-gnu` only) |
+| `REGA_BINARY` | – | ReGaHss binary in the build context to test instead of the one of OpenCCU-Base, e.g. a build of a ReGaHss pull request. A binary instrumented with ASan/UBSan (`x86_64-linux-gnu` only) is run like the `asan` variant (sanitizer reports fail the test run, faketime based timer tests are pending) |
 
 For all variants the build verifies that ReGaHss resolves all its symbols with the selected libraries (`ldd -r`). With `asan` the sanitizer runtimes are only preloaded into the ReGaHss process (`REGA_PRELOAD`), any ASan/UBSan report makes the test run fail and ReGaHss is stopped gracefully (`SIGTERM`) to let it write its coverage data. As libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup (the ASan allocator calls `clock_gettime()` with its lock held, which triggers the lazy initialization of libfaketime, which in turn allocates memory), the faketime based timer tests are reported as pending for `asan` (they are run by all other variants).
 
@@ -270,6 +275,32 @@ jobs:
       libs: ${{ matrix.libs }}
       test_repo: OpenCCU/ReGaHss-Test
       test_ref: master
+```
+
+### Testing ReGaHss builds
+
+The reusable workflow can also test a ReGaHss binary built by the calling workflow run instead of the one of OpenCCU-Base, e.g. a ReGaHss pull request built with ASan/UBSan. The calling workflow uploads the binary (file `ReGaHss`) as artifact and passes its name as `rega_artifact`. As a called workflow runs in the context of the calling run, the binary and all results (logs, core dumps, sanitizer reports) are only accessible there, i.e. a non-public repository does not disclose them:
+
+```yaml
+jobs:
+  build-asan:
+    runs-on: ubuntu-24.04
+    steps:
+      # ... build ReGaHss with -fsanitize=address,undefined ...
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ReGaHss-asan
+          path: ReGaHss
+  regahss-test:
+    needs: build-asan
+    uses: OpenCCU/ReGaHss-Test/.github/workflows/regahss-test.yml@<sha>
+    with:
+      base_ref: main
+      arch: x86_64-linux-gnu
+      libs: asan
+      rega_artifact: ReGaHss-asan
+      test_repo: OpenCCU/ReGaHss-Test
+      test_ref: <sha>
 ```
 
 ## homematic.regadom

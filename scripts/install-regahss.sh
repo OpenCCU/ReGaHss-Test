@@ -12,6 +12,12 @@
 #               (see build-libs.sh) to be used instead of the prebuilt
 #               libraries of OpenCCU-Base
 #
+# Environment:
+#
+#   REGA_BINARY  ReGaHss binary to be installed instead of the one of
+#                OpenCCU-Base, e.g. a build of a ReGaHss pull request
+#                (sanitizer instrumented builds: x86_64-linux-gnu only)
+#
 set -euo pipefail
 
 BASE_DIR=${1:?usage: $0 <openccu-base-dir> [arch] [libs-dir]}
@@ -22,6 +28,7 @@ LIB_DIR=/usr/local/lib/regahss
 REGA_BIN=/bin/ReGaHss
 ABI_REPORT=/etc/regahss-abi-report.txt
 LIBS=(libXmlRpc.so libxmlparser.so)
+REGA_BINARY=${REGA_BINARY:-}
 
 error() {
   echo "::error::$*" >&2
@@ -65,7 +72,15 @@ list_dependencies() {
   LD_TRACE_LOADED_OBJECTS=1 LD_WARN=yes LD_BIND_NOW=${relocations} "${EMULATOR}" "${LOADER}" "$1"
 }
 
-[[ -f ${BASE_DIR}/bin/${ARCH}/ReGaHss ]] || error "ReGaHss binary for ${ARCH} missing in ${BASE_DIR}"
+if [[ -n ${REGA_BINARY} ]]; then
+  [[ -f ${REGA_BINARY} ]] || error "ReGaHss binary ${REGA_BINARY} missing"
+  rega_src=${REGA_BINARY}
+  rega_origin=custom
+else
+  [[ -f ${BASE_DIR}/bin/${ARCH}/ReGaHss ]] || error "ReGaHss binary for ${ARCH} missing in ${BASE_DIR}"
+  rega_src=${BASE_DIR}/bin/${ARCH}/ReGaHss
+  rega_origin=OpenCCU-Base
+fi
 for lib in "${LIBS[@]}"; do
   [[ -f ${BASE_DIR}/lib/${ARCH}/${lib} ]] || error "${lib} for ${ARCH} missing in ${BASE_DIR}"
   [[ -z ${LIBS_DIR} || -f ${LIBS_DIR}/${lib} ]] || error "${lib} missing in ${LIBS_DIR}"
@@ -82,8 +97,8 @@ fi
 
 umask 022
 
-echo "STEP: installing ReGaHss (${ARCH}) with ${libs_variant} libraries"
-install -D -m 0755 "${BASE_DIR}/bin/${ARCH}/ReGaHss" "${REGA_BIN}"
+echo "STEP: installing ReGaHss (${ARCH}, ${rega_origin}) with ${libs_variant} libraries"
+install -D -m 0755 "${rega_src}" "${REGA_BIN}"
 install -d "${LIB_DIR}"
 for lib in "${LIBS[@]}"; do
   install -m 0644 "${libs_src}/${lib}" "${LIB_DIR}/"
@@ -113,6 +128,14 @@ echo "STEP: verifying ReGaHss runtime dependencies"
 list_dependencies "${REGA_BIN}"
 if list_dependencies "${REGA_BIN}" | grep -q 'not found'; then
   error "unresolved runtime dependencies of ${REGA_BIN}"
+fi
+# a ReGaHss instrumented with ASan/UBSan is run like the asan variant of the
+# libraries (see docker-entrypoint.sh); checked via the sanitizer symbols of
+# the binary itself (ldd also lists the dependencies of the asan libraries)
+rega_sanitized=no
+if grep -qaE '__(asan|ubsan)_' "${REGA_BIN}"; then
+  [[ ${ARCH} == x86_64-linux-gnu ]] || error "sanitizer instrumented ReGaHss binaries are only supported for x86_64-linux-gnu"
+  rega_sanitized=yes
 fi
 # all symbols ReGaHss imports must be provided by the (rebuilt) libraries
 undefined=$(list_dependencies -r "${REGA_BIN}" 2>&1 | grep 'undefined symbol' || true)
@@ -147,8 +170,10 @@ commit=$(cat "${BASE_DIR}/.openccu-base-commit" 2>/dev/null || echo unknown)
 cat >/etc/regahss-test.info <<EOF
 REGA_ARCH=${ARCH}
 REGA_LIBS=${libs_variant}
+REGA_ORIGIN=${rega_origin}
+REGA_SANITIZED=${rega_sanitized}
 REGA_VERSION="${version}"
 REGA_EMULATOR_INFO="${EMULATOR:+$(${EMULATOR} --version | head -n 1)}"
 OPENCCU_BASE_COMMIT=${commit}
 EOF
-echo "installed ${version} from OpenCCU-Base ${commit} (${ARCH}, ${libs_variant} libraries)"
+echo "installed ${version} (${rega_origin}, sanitized: ${rega_sanitized}) with OpenCCU-Base ${commit} (${ARCH}, ${libs_variant} libraries)"

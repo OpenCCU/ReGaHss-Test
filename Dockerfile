@@ -25,6 +25,10 @@
 #              source    built from the OpenCCU-Base sources
 #              asan      built from source with ASan/UBSan and gcov coverage
 #                        (x86_64-linux-gnu only)
+#   REGA_BINARY  ReGaHss binary in the build context to test instead of the
+#              one of OpenCCU-Base, e.g. a build of a ReGaHss pull request
+#              (optional; ASan/UBSan instrumented: x86_64-linux-gnu only, run
+#              like the asan variant)
 
 # fetch the required parts of OpenCCU-Base
 FROM node:25-bookworm-slim AS openccu-base
@@ -106,6 +110,7 @@ RUN packages=(ca-certificates git make gcc libc6-dev) \
 FROM node:25-bookworm-slim
 ARG REGA_ARCH=x86_64-linux-gnu
 ARG REGA_LIBS=prebuilt
+ARG REGA_BINARY=
 ARG GCOVR_VERSION=8.6
 LABEL org.opencontainers.image.source="https://github.com/OpenCCU/ReGaHss-Test" \
       org.opencontainers.image.description="ReGaHss test environment based on OpenCCU-Base" \
@@ -137,6 +142,9 @@ RUN packages=(ca-certificates gdb procps tzdata) \
       asan) packages+=(libasan8 libubsan1 gcc python3-venv) ;; \
       *) echo "unsupported REGA_LIBS ${REGA_LIBS}" >&2; exit 1 ;; \
     esac \
+ && if [ -n "${REGA_BINARY}" ] && [ "${REGA_ARCH}" = "x86_64-linux-gnu" ]; then \
+      packages+=(libasan8 libubsan1); \
+    fi \
  && apt-get update \
  && apt-get install -y --no-install-recommends "${packages[@]}" \
  && rm -rf /var/lib/apt/lists/* \

@@ -13,6 +13,11 @@ set -uo pipefail
 [[ -r /etc/regahss-test.info ]] && source /etc/regahss-test.info
 
 REGA_LIBS=${REGA_LIBS:-prebuilt}
+# sanitizer instrumented libraries (asan variant) and/or ReGaHss binary
+sanitized=no
+if [[ ${REGA_LIBS} == asan || ${REGA_SANITIZED:-no} == yes ]]; then
+  sanitized=yes
+fi
 RESULTS=${REGA_RESULTS_DIR:-/results}
 LIBS_BUILD_DIR=/opt/regahss-libs/build
 BASE_DIR=/opt/openccu-base
@@ -77,7 +82,7 @@ if [[ -n ${REGA_REF_BIN:-} ]]; then
   ref_version="${ref_version} (OpenCCU-Base $(cat "${REF_DIR}/commit" 2>/dev/null || echo unknown))"
 fi
 
-if [[ ${REGA_LIBS} == asan ]]; then
+if [[ ${sanitized} == yes ]]; then
   sanitizer_dir=${RESULTS}/sanitizer
   rm -rf "${sanitizer_dir}"
   mkdir -p "${sanitizer_dir}"
@@ -87,7 +92,9 @@ if [[ ${REGA_LIBS} == asan ]]; then
     echo "ERROR: ASan/UBSan runtime libraries not found" >&2
     exit 1
   fi
-  # the sanitizer runtimes are only preloaded into the ReGaHss process
+  # the sanitizer runtimes are only preloaded into the ReGaHss process (also
+  # for an instrumented ReGaHss linking them anyway, which marks it as
+  # sanitized for the test suite, see initTest() in lib/helper.js)
   export REGA_PRELOAD=${asan_lib}:${ubsan_lib}
   export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0:print_summary=1:log_path=${sanitizer_dir}/asan}
   export UBSAN_OPTIONS=${UBSAN_OPTIONS:-print_stacktrace=1:print_summary=1:log_path=${sanitizer_dir}/ubsan}
@@ -102,7 +109,10 @@ fi
   echo
   echo "| Component | Version |"
   echo "|---|---|"
-  echo "| ReGaHss | ${REGA_VERSION:-unknown} (${REGA_ARCH:-unknown}) |"
+  rega_info=${REGA_ARCH:-unknown}
+  [[ ${REGA_ORIGIN:-OpenCCU-Base} == OpenCCU-Base ]] || rega_info+=", ${REGA_ORIGIN} binary"
+  [[ ${REGA_SANITIZED:-no} == no ]] || rega_info+=", sanitizer instrumented"
+  echo "| ReGaHss | ${REGA_VERSION:-unknown} (${rega_info}) |"
   echo "| OpenCCU-Base | ${OPENCCU_BASE_COMMIT:-unknown} |"
   if [[ -n ${ref_version} ]]; then
     echo "| reference ReGaHss | ${ref_version} |"
@@ -135,7 +145,7 @@ rc=$?
     node "$(dirname "$0")/junit-summary.js" "${REGA_JUNIT_FILE}" || echo "JUnit summary failed"
     echo
   fi
-  if [[ ${REGA_LIBS} == asan ]]; then
+  if [[ ${sanitized} == yes ]]; then
     echo "(faketime based timer tests are skipped, as libfaketime and the preloaded ASan runtime deadlock at ReGaHss startup)"
     echo
   fi
@@ -223,7 +233,7 @@ if [[ -s /etc/regahss-abi-report.txt ]]; then
   } >>"${summary}"
 fi
 
-if [[ ${REGA_LIBS} == asan ]]; then
+if [[ ${sanitized} == yes ]]; then
   reports=$(find "${sanitizer_dir}" -type f -size +0 | sort)
   {
     echo "### Sanitizer reports (ASan/UBSan)"
