@@ -11,6 +11,7 @@ const {
     ReGaCrashError,
     requireRegaVersion
 } = require('../lib/helper.js');
+const {programScript, timerScript} = require('../lib/program-builder.js');
 
 require('should');
 
@@ -109,6 +110,40 @@ WriteLine("ok");
                 (result.signal === null).should.be.true('ReGaHss was terminated by signal ' + result.signal);
             });
         }
+    });
+
+    // (when the DOM was destroyed at the end of a stop, the condition of a
+    // program with a time module deleted its calendar datapoint while the DOM
+    // container was already partially destroyed: ReGaHss aborted with "pure
+    // virtual method called" if the condition was deleted before the time
+    // module, i.e. if it has the higher object ID)
+    describe('graceful shutdown with a program with a time module', function () {
+        // fixed in ReGaHss R1.00.0388.0263
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0263');
+        });
+
+        step('should terminate on SIGTERM without abort', async function () {
+            this.slow(20_000);
+            this.timeout(90_000);
+            const instance = new ReGaInstance({name: 'shutdown-time-module'});
+            await instance.start({testFile: __filename});
+            await instance.ready();
+            await instance.waitFor(/ReGa entering normal operation/);
+            // (the time module is created first, so the condition of the
+            // program gets the higher object ID)
+            const timer = await instance.exec(timerScript({name: 'Shutdown Timer', type: 'periodic', period: 3600}));
+            Number(timer.output).should.be.above(0);
+            const program = await instance.exec(programScript({
+                name: 'Shutdown Program',
+                rules: [{conditions: [[{timer: Number(timer.output)}]], destinations: [{script: 'WriteLine("x");'}]}]
+            }));
+            Number(program.output).should.be.above(Number(timer.output));
+            const result = await instance.stop({signal: 'SIGTERM', timeout: 30_000});
+            result.killed.should.be.false('ReGaHss did not terminate within 30s, last log lines:\n' + instance.tail(20));
+            ReGaInstance.isCrash(result).should.be.false('ReGaHss crashed on SIGTERM (' + (result.signal || 'exit code ' + result.code) + '), last log lines:\n' + instance.tail(20));
+            (result.signal === null).should.be.true('ReGaHss was terminated by signal ' + result.signal);
+        });
     });
 
     describe('crash detection of the test harness', function () {
