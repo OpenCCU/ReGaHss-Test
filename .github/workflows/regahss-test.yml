@@ -158,7 +158,7 @@ jobs:
 
       - name: upload results
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: regahss-test-${{ inputs.arch }}-${{ inputs.libs }}-${{ inputs.base_name || inputs.base_ref }}
           path: results/
