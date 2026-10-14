@@ -22,6 +22,13 @@ name: ReGaHss test
 #         libs: ${{ matrix.libs }}
 #         test_repo: OpenCCU/ReGaHss-Test
 #         test_ref: master
+#
+# A ReGaHss binary built by the calling workflow run (e.g. of a ReGaHss pull
+# request, also instrumented with ASan/UBSan) can be tested instead of the one
+# of OpenCCU-Base by passing the name of the artifact containing it (file
+# ReGaHss) as rega_artifact. As the workflow runs in the context of the
+# calling run, the binary as well as all results (logs, core dumps, sanitizer
+# reports) are only accessible there.
 
 on:
   workflow_call:
@@ -52,6 +59,10 @@ on:
         default: ''
       test_ref:
         description: 'ReGaHss-Test ref to check out (default: ref of the triggering event)'
+        type: string
+        default: ''
+      rega_artifact:
+        description: 'name of an artifact of the calling workflow run with a ReGaHss binary (file ReGaHss) to test instead of the one of OpenCCU-Base (optional)'
         type: string
         default: ''
       ref_base_ref:
@@ -95,6 +106,13 @@ jobs:
           ref: ${{ inputs.test_ref }}
           persist-credentials: false
 
+      - name: download ReGaHss binary
+        if: ${{ inputs.rega_artifact != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.rega_artifact }}
+          path: regahss-binary
+
       - uses: docker/setup-buildx-action@v4
 
       - name: build test image
@@ -108,6 +126,7 @@ jobs:
             BASE_REF=${{ inputs.base_ref }}
             REGA_ARCH=${{ inputs.arch }}
             REGA_LIBS=${{ inputs.libs }}
+            REGA_BINARY=${{ inputs.rega_artifact != '' && 'regahss-binary/ReGaHss' || '' }}
             REF_BASE_REF=${{ inputs.ref_base_ref }}
           cache-from: type=gha,scope=${{ inputs.arch }}-${{ inputs.libs }}
           cache-to: type=gha,mode=max,scope=${{ inputs.arch }}-${{ inputs.libs }}
