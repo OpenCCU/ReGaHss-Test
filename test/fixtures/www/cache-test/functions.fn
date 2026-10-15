@@ -1,0 +1,14 @@
+function ::fnA() {
+  Write("AAA");
+}
+function ::fnB() {
+  Write("BBB");
+}
+function ::fnC() {
+  Write("CCC");
+}
+function ::fnClear() {
+  Write("x");
+  system.ClearCache();
+  Write("y");
+}
