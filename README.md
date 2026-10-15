@@ -237,6 +237,10 @@ The fuzzer immediately found an unbounded recursion in `libXmlRpc`: a `system.mu
 
 `test/22-stability.js` is a soak test: it executes scripts, sends device events and lets a program run for `REGA_SOAK_SECONDS` while sampling the resident memory, the number of threads and open file descriptors of ReGaHss (`ReGaInstance.resourceUsage()`), and checks that ReGaHss stays responsive and does not leak. The nightly CI run uses a longer duration.
 
+### Script caches
+
+`test/23-script-cache.js` checks the caches of the script engine of ReGaHss: `Call()` of functions in `.fn` files together with `system.ClearCache()` and `system.CacheMode()`, `system.ClearCache()` called by cached code itself, and concurrent first requests of a page, which must all return the complete page ([OpenCCU/OpenCCU#2638](https://github.com/OpenCCU/OpenCCU/issues/2638), [OpenCCU/OpenCCU#1467](https://github.com/OpenCCU/OpenCCU/issues/1467)). The required `.fn`/`.htm` files (`test/fixtures/www/cache-test`) are served from a document root of their own (the WebUI files linked plus the fixtures, `ReGaInstance` option `httpDocPath`). The tests are skipped for ReGaHss versions before R1.00.0388.0264.
+
 ## Continuous integration
 
 The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and nightly. It tests the ReGaHss binaries for `x86_64-linux-gnu`, `i686-linux-gnu`, `aarch64-linux-gnu` and `arm-linux-gnueabihf` (the ARM architectures with qemu) of
