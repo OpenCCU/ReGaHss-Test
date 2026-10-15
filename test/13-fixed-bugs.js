@@ -972,6 +972,59 @@ dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
             });
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2611: the behaviour
+        // of foreach() over a tab separated list is kept deliberately (many
+        // scripts build lists with a trailing tab), these tests document it
+        describe('foreach() over tab separated lists', function () {
+            // (a tab terminates a list element, the tab of the last element
+            // may be omitted: a trailing tab does not add an empty element,
+            // an empty last element thus needs a trailing tab)
+            it('should treat the tab as terminator of the list elements', async function () {
+                this.timeout(30_000);
+                const lists = ['', 'a', 'a\\t', 'a\\t\\t', '\\t', '\\t\\t', 'a\\tb', 'a\\t\\tb', 'a\\tb\\t', '\\tA\\tB\\tC\\tD\\t\\t'];
+                const {output} = await rega.exec(lists.map(list => `
+string e; integer n = 0; string out = "";
+foreach (e, "${list}") { n = n + 1; out = out # "[" # e # "] "; }
+WriteLine(n # ": " # out);
+                `).join(''));
+                output.should.equal([
+                    '0: ',
+                    '1: [a] ',
+                    '1: [a] ',
+                    '2: [a] [] ',
+                    '1: [] ',
+                    '2: [] [] ',
+                    '2: [a] [b] ',
+                    '3: [a] [] [b] ',
+                    '2: [a] [b] ',
+                    '6: [] [A] [B] [C] [D] [] '
+                ].map(line => line + '\r\n').join(''));
+            });
+
+            // (.Split() only replaces the separator by tabs, so an empty last
+            // element of the split string is not iterated; appending the
+            // separator once makes foreach() iterate all elements)
+            it('should iterate all elements of a split string with a trailing separator appended', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+string e; integer n; string out;
+string l = ";A;B;C;D;;";
+n = 0; out = ""; foreach (e, l.Split(";")) { n = n + 1; out = out # "[" # e # "] "; }
+WriteLine(n # ": " # out);
+n = 0; out = ""; foreach (e, (l # ";").Split(";")) { n = n + 1; out = out # "[" # e # "] "; }
+WriteLine(n # ": " # out # "/ " # web.webGetValueListCount(l));
+l = "A;B";
+n = 0; out = ""; foreach (e, (l # ";").Split(";")) { n = n + 1; out = out # "[" # e # "] "; }
+WriteLine(n # ": " # out);
+                `);
+                output.should.equal([
+                    '6: [] [A] [B] [C] [D] [] ',
+                    '7: [] [A] [B] [C] [D] [] [] / 7',
+                    '2: [A] [B] '
+                ].map(line => line + '\r\n').join(''));
+            });
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2692
         describe('system.SyslogIPAddress() tests', function () {
             // fixed in ReGaHss R1.00.0388.0259
