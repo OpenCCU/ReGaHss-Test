@@ -1003,6 +1003,78 @@ ia.RemoveAll();
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2623: a script runtime
+        // error ends everything up to the next enclosing if block (or the
+        // whole script), loops do not catch it. This behaviour is kept
+        // deliberately (a loop should not continue after an obvious error),
+        // these tests document it. A loop body enclosed in 'if (true) { ... }'
+        // only ends the current iteration.
+        describe('script runtime errors in loops', function () {
+            // (dom.GetObject("65535") returns null, so .Name() raises a
+            // script runtime error in the second iteration; the result is
+            // assigned to a variable, as a Write() would output partial text)
+            const foreachLoop = body => `string e; string n; foreach (e, "1\\t65535\\t2") { ${body} }`;
+            const foreachBody = 'Write(e); n = dom.GetObject(e).Name(); Write(";");';
+            const whileLoop = body => `string ids = "1\\t65535\\t2"; string n; integer i = 0; while (i < 3) { i = i + 1; ${body} }`;
+            const whileBody = 'Write(i); n = dom.GetObject(ids.StrValueByIndex("\\t", i - 1)).Name(); Write(";");';
+
+            const run = async script => {
+                const {output} = await rega.exec(script);
+                return output;
+            };
+
+            it('should end the script for an error in a block', async function () {
+                this.timeout(30_000);
+                const output1 = await run('object o; string n; Write("a"); n = o.Name(); WriteLine(" after");');
+                output1.should.equal('a');
+            });
+
+            it('should continue after an if block with an error', async function () {
+                this.timeout(30_000);
+                const output2 = await run('object o; string n; if (true) { Write("a"); n = o.Name(); Write("b"); } WriteLine(" after");');
+                output2.should.equal('a after\r\n');
+                const output3 = await run('object o; if (o.Name()) { Write("x"); } WriteLine(" after");');
+                output3.should.equal(' after\r\n');
+            });
+
+            for (const [name, loop, body, done, last] of [
+                ['foreach()', foreachLoop, foreachBody, '1;65535', '2;'],
+                ['while()', whileLoop, whileBody, '1;2', '3;']
+            ]) {
+                it(`should end ${name} and the script for an error in the loop`, async function () {
+                    this.timeout(30_000);
+                    const output = await run(loop(body) + ' WriteLine(" after");');
+                    output.should.equal(done);
+                });
+
+                it(`should end ${name} up to the enclosing if block for an error in the loop`, async function () {
+                    this.timeout(30_000);
+                    const output = await run('if (true) { ' + loop(body) + ' Write(" if-end"); } WriteLine(" after");');
+                    output.should.equal(done + ' after\r\n');
+                });
+
+                it(`should only end the iteration of ${name} for an error in a loop body enclosed in if (true)`, async function () {
+                    this.timeout(30_000);
+                    const output = await run(loop('if (true) { ' + body + ' }') + ' WriteLine(" after");');
+                    output.should.equal(done + last + ' after\r\n');
+                });
+            }
+
+            it('should end nested loops up to the enclosing if block for an error in the inner loop', async function () {
+                this.timeout(30_000);
+                const output = await run('integer m; if (true) { foreach (m, 2) { Write("<" # m # ":"); ' + foreachLoop(foreachBody) + ' Write(">"); } } WriteLine(" after");');
+                output.should.equal('<1:1;65535 after\r\n');
+            });
+
+            it('should end while() and foreach() for an error in the condition or list', async function () {
+                this.timeout(30_000);
+                const output4 = await run('object o; if (true) { while (o.Name()) { Write("x"); } Write(" if-end"); } WriteLine(" after");');
+                output4.should.equal(' after\r\n');
+                const output5 = await run('object o; string e; if (true) { foreach (e, o.Name()) { Write("x"); } Write(" if-end"); } WriteLine(" after");');
+                output5.should.equal(' after\r\n');
+            });
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2611: the behaviour
         // of foreach() over a tab separated list is kept deliberately (many
         // scripts build lists with a trailing tab), these tests document it
