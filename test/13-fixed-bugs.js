@@ -972,6 +972,37 @@ dom.GetObject("Admin").UserTempViewIDs3().RemoveAll();
             });
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2612
+        describe('foreach() loop variable of any type', function () {
+            // fixed in ReGaHss R1.00.0388.0264
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0264');
+            });
+
+            // (the loop was skipped silently if the loop variable was not
+            // declared as string, or as string or integer for a loop over an
+            // integer count; the loop variable is set to the elements
+            // (string) or the count (integer) anyway)
+            for (const type of ['boolean', 'idarray', 'integer', 'object', 'real', 'string', 'time', 'var', 'xml']) {
+                it('should loop with a loop variable declared as ' + type, async function () {
+                    this.timeout(30_000);
+                    const {output} = await rega.exec(`
+idarray ia = dom.GetObject("Admin").UserTempViewIDs3(); ia.RemoveAll(); ia.Add(11); ia.Add(22);
+${type} x; ${type} y; ${type} z;
+string out = "";
+foreach (x, "A\\tB") { out = out # x.Type() # ":" # x # " "; }
+out = out # "| ";
+foreach (y, ia) { out = out # y.Type() # ":" # y # " "; }
+out = out # "| ";
+foreach (z, 2) { out = out # z.Type() # ":" # z # " "; }
+WriteLine(out # "| " # x.Type() # " " # y.Type() # " " # z.Type());
+ia.RemoveAll();
+                    `);
+                    output.should.equal('string:A string:B | string:11 string:22 | integer:1 integer:2 | string string integer\r\n');
+                });
+            }
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2611: the behaviour
         // of foreach() over a tab separated list is kept deliberately (many
         // scripts build lists with a trailing tab), these tests document it
