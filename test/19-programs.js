@@ -379,7 +379,15 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
                     name: 'PC Daily',
                     rules: [{conditions: [[{timer: Number(timer)}]], destinations: [{script: 'dom.GetObject("PC Daily").State(system.Date("%H:%M:%S"));'}]}]
                 });
-                await until(() => value('PC Daily'), time.slice(11), 15_000);
+                // (the program is executed in the second of the timer, its
+                // destination script may however only run in the next one on
+                // a slow system, e.g. the 32-bit platforms in real time with
+                // parallel test files)
+                await until(async () => ((await value('PC Daily')) === '' ? '' : 'executed'), 'executed', 15_000);
+                const executed = await value('PC Daily');
+                const seconds = hms => hms.split(':').reduce((sum, part) => (sum * 60) + Number(part), 0);
+                const delay = (seconds(executed) - seconds(time.slice(11)) + 86_400) % 86_400;
+                delay.should.be.within(0, 2, 'executed at ' + executed + ' instead of ' + time.slice(11));
             });
         });
 
