@@ -146,6 +146,70 @@ WriteLine("ok");
         });
     });
 
+    // (the alarm states are not saved in the DOM file, so all alarms are
+    // inactive after a restart, but ReGaHss kept the number of active alarms
+    // and service messages (ID_GW_SYSALARM/ID_GW_SYSSERVICE) saved with the
+    // DOM file until the next alarm changed, i.e. the WebUI showed alarms or
+    // service messages which did not exist (anymore))
+    describe('alarm counters after a restart', function () {
+        // fixed in ReGaHss R1.00.0388.0266
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0266');
+        });
+
+        const counters = 'Write(dom.GetObject(ID_GW_SYSALARM).Value() # " " # dom.GetObject(ID_GW_SYSSERVICE).Value());';
+        let instance = null;
+
+        step('should count an active alarm and service message', async function () {
+            this.slow(10_000);
+            this.timeout(60_000);
+            instance = new ReGaInstance({name: 'alarm-counters'});
+            await instance.start({testFile: __filename});
+            await instance.ready();
+            await instance.exec(`
+object sv = dom.CreateObject(OT_ALARMDP, "Restart Alarm");
+dom.GetObject(ID_SYSTEM_VARIABLES).Add(sv.ID());
+sv.ValueType(ivtBinary);
+sv.ValueSubType(istAlarm);
+sv.AlType(atSystem);
+sv.AlArm(true);
+sv.State(true);
+object svc = dom.CreateObject(OT_ALARMDP, "Restart Service");
+dom.GetObject(ID_SERVICES).Add(svc.ID());
+svc.ValueType(ivtBinary);
+svc.ValueSubType(istAlarm);
+svc.AlType(atService);
+svc.AlArm(true);
+svc.State(true);
+            `);
+            // (the states are set asynchronously)
+            let output = '';
+            for (let i = 0; i < 50 && output !== '1 1'; i++) {
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise(resolve => {
+                    setTimeout(resolve, 100);
+                });
+                // eslint-disable-next-line no-await-in-loop
+                ({output} = await instance.exec(counters));
+            }
+
+            output.should.equal('1 1');
+            await instance.exec('system.Save();');
+            await instance.stop();
+        });
+
+        step('should reset the counters on startup', async function () {
+            this.slow(10_000);
+            this.timeout(60_000);
+            instance = new ReGaInstance({name: 'alarm-counters', copyRegadom: false});
+            await instance.start({testFile: __filename});
+            await instance.ready();
+            const {output} = await instance.exec(counters);
+            output.should.equal('0 0');
+            await instance.stop();
+        });
+    });
+
     describe('crash detection of the test harness', function () {
         let instance = null;
 
