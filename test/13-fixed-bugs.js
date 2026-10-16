@@ -1003,6 +1003,30 @@ ia.RemoveAll();
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/1420: a script doubling a
+        // string in a loop used up all memory and crashed ReGaHss
+        it('should end a script creating a string longer than 32 MiB with a runtime error', async function () {
+            // fixed in ReGaHss R1.00.0388.0265
+            requireRegaVersion(this, 'R1.00.0388.0265');
+            this.timeout(60_000);
+            const logged = regaInstance().waitFor(/string concatenation exceeds the maximum string length of 33554432 characters \(67108864\)/, {buffered: false, timeout: 30_000});
+            const {output} = await rega.exec(`
+string a = "A";
+integer b = 0;
+if (true) {
+  while (b < 30) {
+    b = b + 1;
+    a = a # a;
+  }
+}
+WriteLine("b=" # b # " length=" # a.Length());
+            `);
+            // (the 26th doubling would result in 64 MiB)
+            output.should.equal('b=26 length=33554432\r\n');
+            await logged;
+            regaInstance().running.should.be.true();
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2216
         describe('URL encoded characters in the URL parameters of remote script calls', function () {
             // fixed in ReGaHss R1.00.0388.0265
