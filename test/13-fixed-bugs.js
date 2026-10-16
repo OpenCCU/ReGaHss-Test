@@ -1027,6 +1027,70 @@ WriteLine("b=" # b # " length=" # a.Length());
             regaInstance().running.should.be.true();
         });
 
+        // (Replace() could create strings of any length as well, and an empty
+        // search string never ended)
+        it('should end a script creating a string longer than 32 MiB with Replace() with a runtime error', async function () {
+            // fixed in ReGaHss R1.00.0388.0265
+            requireRegaVersion(this, 'R1.00.0388.0265');
+            this.timeout(60_000);
+            const logged = regaInstance().waitFor(/Replace\(\) exceeds the maximum string length of 33554432 characters/, {buffered: false, timeout: 30_000});
+            const {output} = await rega.exec(`
+string a = "A";
+integer b = 0;
+while (b < 20) {
+  b = b + 1;
+  a = a # a;
+}
+string x32 = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+string r = "";
+if (true) {
+  r = x32.Replace("x", a);
+  Write(r.Length());
+  r = (x32 # "x").Replace("x", a);
+  Write(" not reached");
+}
+WriteLine(" " # r.Length() # " " # "abc".Replace("b", "XY") # " " # "abc".Replace("", "x"));
+            `);
+            // (32 times 1 MiB fit, 33 times would exceed 32 MiB; like for
+            // other runtime errors in an assignment, the variable is set to
+            // the string Replace() was called for)
+            output.should.equal('33554432 33 aXYc abc\r\n');
+            await logged;
+            regaInstance().running.should.be.true();
+        });
+
+        // (the output of a script was not limited either)
+        it('should end a script writing more than 32 MiB of output with a runtime error', async function () {
+            // fixed in ReGaHss R1.00.0388.0265
+            requireRegaVersion(this, 'R1.00.0388.0265');
+            this.timeout(60_000);
+            const logged = regaInstance().waitFor(/output exceeds the maximum output length of 33554432 characters/, {buffered: false, timeout: 30_000});
+            const {output} = await rega.exec(`
+string a = "A";
+integer b = 0;
+while (b < 20) {
+  b = b + 1;
+  a = a # a;
+}
+integer n = 0;
+if (true) {
+  while (n < 100) {
+    n = n + 1;
+    Write(a);
+  }
+}
+Write("n=" # n);
+            `);
+            // (32 times 1 MiB fit, the 33rd write and the following ones would
+            // exceed 32 MiB)
+            output.length.should.equal(32 * 1024 * 1024);
+            await logged;
+            // (the limit applies per request)
+            const next = await rega.exec('WriteLine("next");');
+            next.output.should.equal('next\r\n');
+            regaInstance().running.should.be.true();
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2216
         describe('URL encoded characters in the URL parameters of remote script calls', function () {
             // fixed in ReGaHss R1.00.0388.0265
