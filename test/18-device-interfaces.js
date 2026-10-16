@@ -14,7 +14,8 @@ const {
     simulator,
     regaInstance,
     waitForSim,
-    fixtureDevice
+    fixtureDevice,
+    requireRegaVersion
 } = require('../lib/helper.js');
 const {programScript} = require('../lib/program-builder.js');
 
@@ -258,6 +259,49 @@ foreach (id, dom.GetObject(${replacedId}).Channels().EnumUsedIDs()) { WriteLine(
                     const result = await rega.exec('Write(dom.GetObject("VarString1").Value());');
                     return result.output;
                 }, 'window open');
+            });
+            // see https://github.com/OpenCCU/OpenCCU/issues/1734: the conditions
+            // are evaluated asynchronously, they used the current value of the
+            // triggering datapoint instead of the value of the event, so that a
+            // program did not react if a further event of the same datapoint
+            // (e.g. in the same system.multicall) had been processed meanwhile
+            it('should evaluate the conditions with the value of the triggering event', async function () {
+                // fixed in ReGaHss R1.00.0388.0265
+                requireRegaVersion(this, 'R1.00.0388.0265');
+                this.timeout(60_000);
+                await rega.exec('object sv = dom.CreateObject(OT_VARDP, "Contact count"); sv.ValueType(ivtFloat); sv.ValueSubType(istGeneric); sv.ValueMin(0); sv.ValueMax(1000); sv.State(0); dom.GetObject(ID_SYSTEM_VARIABLES).Add(sv.ID());');
+                const {output} = await rega.exec(programScript({
+                    name: 'Contact count program',
+                    rules: [{
+                        conditions: [[{datapoint: 'HmIP-RF.' + contact + ':1.STATE', value: 1, trigger: 'update'}]],
+                        destinations: [{script: 'object c = dom.GetObject("Contact count"); c.State(c.Value() + 1);'}]
+                    }]
+                }));
+                Number(output).should.be.above(0);
+                const count = async () => {
+                    const result = await rega.exec('Write(dom.GetObject("Contact count").Value().ToInteger());');
+                    return result.output;
+                };
+
+                // (ReGaHss activates new programs asynchronously, thus the event
+                // is repeated until the program reacted)
+                await until(async () => {
+                    await hmip().event(contact + ':1', 'STATE', 1);
+                    await sleep(200);
+                    return (await count()) === '0' ? 'inactive' : 'active';
+                }, 'active');
+                await rega.exec('dom.GetObject("Contact count").State(0);');
+
+                const rounds = 10;
+                for (let round = 0; round < rounds; round++) {
+                    await hmip().multicallEvents([
+                        [contact + ':1', 'STATE', 1],
+                        [contact + ':1', 'STATE', 0]
+                    ]);
+                    await sleep(200);
+                }
+
+                await until(count, String(rounds));
             });
         });
 

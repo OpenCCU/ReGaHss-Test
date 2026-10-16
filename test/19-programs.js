@@ -135,6 +135,48 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 counts.should.deepEqual({change: '1.000000', update: '3.000000', check: '0.000000'});
             });
 
+            // see https://github.com/OpenCCU/OpenCCU/issues/1734 and
+            // https://github.com/OpenCCU/OpenCCU/issues/1278: the conditions
+            // are evaluated asynchronously, they used the current value of the
+            // triggering variable instead of the value of the update, so that
+            // a program did not react if the variable was updated again
+            // meanwhile (e.g. set twice by a script)
+            it('should evaluate the conditions with the value of the triggering update', async function () {
+                // fixed in ReGaHss R1.00.0388.0265
+                requireRegaVersion(this, 'R1.00.0388.0265');
+                this.timeout(60_000);
+                const triggers = ['update', 'change'];
+                const variables = {};
+                for (const trigger of triggers) {
+                    variables['PC Twice ' + trigger] = 'number';
+                    variables['PC Twice Count ' + trigger] = 'number';
+                }
+
+                await createSysvars(variables);
+                for (const trigger of triggers) {
+                    await set('PC Twice ' + trigger, 60);
+                    await createProgram({
+                        name: 'PC Twice ' + trigger,
+                        rules: [{
+                            conditions: [[{
+                                sysvar: 'PC Twice ' + trigger, compare: '<=', value: 0, trigger
+                            }]], destinations: [increment('PC Twice Count ' + trigger)]
+                        }]
+                    });
+                }
+
+                await sleep(500);
+                const rounds = 10;
+                for (let round = 0; round < rounds; round++) {
+                    await exec(triggers.map(trigger => `dom.GetObject("PC Twice ${trigger}").State(0); dom.GetObject("PC Twice ${trigger}").State(60);`).join('\n'));
+                    await sleep(100);
+                }
+
+                for (const trigger of triggers) {
+                    await until(() => value('PC Twice Count ' + trigger), rounds.toFixed(6));
+                }
+            });
+
             it('should combine conditions with AND', async function () {
                 this.timeout(60_000);
                 await createSysvars({'PC A': 'bool', 'PC B': 'bool', 'PC And': 'number'});
@@ -260,10 +302,19 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                     name: 'PC Press',
                     rules: [{conditions: [[{sysvar: 'PC Press', value: true, trigger: 'change'}]], destinations: [{datapoint: 'BidCos-RF.BidCoS-RF:30.PRESS_SHORT', value: true}]}]
                 });
-                await Promise.all([
-                    waitForSim(/setValue rfd BidCoS-RF:30 PRESS_SHORT true/, {buffered: false}),
-                    set('PC Press', true)
-                ]);
+                // (ReGaHss activates new programs asynchronously, thus the
+                // variable is set again until the program reacted)
+                let pressed = false;
+                for (let attempt = 1; attempt <= 5 && !pressed; attempt++) {
+                    const press = waitForSim(/setValue rfd BidCoS-RF:30 PRESS_SHORT true/, {buffered: false, timeout: 3000});
+                    await set('PC Press', true);
+                    pressed = await press.then(() => true, () => false);
+                    if (!pressed) {
+                        await set('PC Press', false);
+                    }
+                }
+
+                pressed.should.be.true('PRESS_SHORT of BidCoS-RF:30 not sent');
             });
 
             it('should not execute inactive programs', async function () {
