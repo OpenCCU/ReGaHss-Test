@@ -1003,6 +1003,19 @@ ia.RemoveAll();
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/1598: the message and
+        // the link of the error page were output as two paragraphs, which the
+        // WebUI (embedding the body of the error page) displayed on one line
+        it('should output the message and the link of the error page for an invalid session in one paragraph', async function () {
+            // fixed in ReGaHss R1.00.0388.0265
+            requireRegaVersion(this, 'R1.00.0388.0265');
+            this.timeout(30_000);
+            const response = await rega.request({path: '/pages/index.htm?sid=@abcdefghij@'});
+            response.statusCode.should.equal(500);
+            response.text.should.containEql('<p>Sitzung ung\u00FCltig oder abgelaufen!\r\n<br><a href="/index.htm">Weiter</a></p>');
+            response.text.should.not.containEql('</p><p>');
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2216
         describe('URL encoded characters in the URL parameters of remote script calls', function () {
             // fixed in ReGaHss R1.00.0388.0265
