@@ -302,10 +302,19 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                     name: 'PC Press',
                     rules: [{conditions: [[{sysvar: 'PC Press', value: true, trigger: 'change'}]], destinations: [{datapoint: 'BidCos-RF.BidCoS-RF:30.PRESS_SHORT', value: true}]}]
                 });
-                await Promise.all([
-                    waitForSim(/setValue rfd BidCoS-RF:30 PRESS_SHORT true/, {buffered: false}),
-                    set('PC Press', true)
-                ]);
+                // (ReGaHss activates new programs asynchronously, thus the
+                // variable is set again until the program reacted)
+                let pressed = false;
+                for (let attempt = 1; attempt <= 5 && !pressed; attempt++) {
+                    const press = waitForSim(/setValue rfd BidCoS-RF:30 PRESS_SHORT true/, {buffered: false, timeout: 3000});
+                    await set('PC Press', true);
+                    pressed = await press.then(() => true, () => false);
+                    if (!pressed) {
+                        await set('PC Press', false);
+                    }
+                }
+
+                pressed.should.be.true('PRESS_SHORT of BidCoS-RF:30 not sent');
             });
 
             it('should not execute inactive programs', async function () {
