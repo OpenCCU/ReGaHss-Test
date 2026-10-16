@@ -1003,6 +1003,68 @@ ia.RemoveAll();
             }
         });
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/2216
+        describe('URL encoded characters in the URL parameters of remote script calls', function () {
+            // fixed in ReGaHss R1.00.0388.0265
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0265');
+            });
+
+            // executes the given URL parameters via /x.exe and returns the
+            // resulting variables (<xml>...</xml> without the fixed elements)
+            const get = async query => {
+                const response = await rega.request({path: '/x.exe?' + query});
+                response.statusCode.should.equal(200);
+                return response.text.replace(/<exec>[^<]*<\/exec><sessionId>[^<]*<\/sessionId><httpUserAgent>[^<]*<\/httpUserAgent>/, '');
+            };
+
+            // (the URL was decoded before it was split into its parameters,
+            // so that an encoded '&' split the parameter)
+            it('should decode an encoded & (%26) within a parameter', async function () {
+                this.timeout(30_000);
+                const output = await get('a=\'A%26B\'&b=\'C%26D\'');
+                output.should.equal('<xml><a>A&amp;B</a><b>C&amp;D</b></xml>');
+            });
+
+            it('should set a system variable to a value with an encoded & (%26)', async function () {
+                this.timeout(30_000);
+                await rega.exec('object sv = dom.CreateObject(OT_VARDP, "url-test-2216"); sv.ValueType(ivtString); sv.ValueSubType(istChar8859); dom.GetObject(ID_SYSTEM_VARIABLES).Add(sv.ID());');
+                try {
+                    const output = await get('v=dom.GetObject(\'url-test-2216\').State(\'CURRENT=50%26VOLTAGE=240.5\')&w=dom.GetObject(\'url-test-2216\').Value()');
+                    output.should.equal('<xml><v>true</v><w>CURRENT=50&amp;VOLTAGE=240.5</w></xml>');
+                } finally {
+                    await rega.exec('object sv = dom.GetObject("url-test-2216"); if (sv) { dom.GetObject(ID_SYSTEM_VARIABLES).Remove(sv.ID()); dom.DeleteObject(sv.ID()); }');
+                }
+            });
+
+            // (an encoded '+' was decoded to a space as well)
+            it('should decode an encoded + (%2B) to + and + to a space', async function () {
+                this.timeout(30_000);
+                const output = await get('a=\'1%2B2\'&b=\'1+2\'&c=1%2B2');
+                output.should.equal('<xml><a>1+2</a><b>1 2</b><c>3</c></xml>');
+            });
+
+            // (the URL was decoded a second time, e.g. %2526 to '&')
+            it('should decode the parameters only once', async function () {
+                this.timeout(30_000);
+                const output = await get('a=\'50%25\'&b=\'%2541\'&c=\'A%2526B\'&d=\'%41%42\'');
+                output.should.equal('<xml><a>50%</a><b>%41</b><c>A%26B</c><d>AB</d></xml>');
+            });
+
+            // (a '%' not followed by two hex digits removed parts of the parameter)
+            it('should keep a % not followed by two hex digits and an encoded nul-byte', async function () {
+                this.timeout(30_000);
+                const output = await get('a=\'50%25x\'&b=\'%4\'&c=\'x%00y\'');
+                output.should.equal('<xml><a>50%x</a><b>%4</b><c>x%00y</c></xml>');
+            });
+
+            it('should still separate the parameters by a & that is not encoded', async function () {
+                this.timeout(30_000);
+                const output = await get('a=\'x\'&b=\'y\'');
+                output.should.equal('<xml><a>x</a><b>y</b></xml>');
+            });
+        });
+
         // see https://github.com/OpenCCU/OpenCCU/issues/2623: a script runtime
         // error ends everything up to the next enclosing if block (or the
         // whole script), loops do not catch it. This behaviour is kept
