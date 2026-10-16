@@ -1397,6 +1397,63 @@ WriteLine(dom.GetObject(ID_CHANNELS).State(1, 300));
                 alive.output.should.equal('true\r\n');
             });
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/467
+        describe('LastValue() of the number of alarms and service messages', function () {
+            // fixed in ReGaHss R1.00.0388.0266
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // creates two alarms of the given type, raises and receipts the
+            // first one and updates the second one (without raising it) and
+            // outputs the change of Value() and LastValue() of the counter
+            const counterScript = (counter, list, alType, name) => `
+object list = dom.GetObject(${list});
+object a = dom.CreateObject(OT_ALARMDP, "${name} A");
+list.Add(a.ID());
+a.ValueType(ivtBinary);
+a.ValueSubType(istAlarm);
+a.AlType(${alType});
+a.AlSetBinaryCondition();
+a.AlArm(true);
+object b = dom.CreateObject(OT_ALARMDP, "${name} B");
+list.Add(b.ID());
+b.ValueType(ivtBinary);
+b.ValueSubType(istAlarm);
+b.AlType(${alType});
+b.AlSetBinaryCondition();
+b.AlArm(true);
+object c = dom.GetObject(${counter});
+integer n = c.Value();
+a.State(true);
+WriteLine((c.Value() - n) # " " # (c.LastValue() - n));
+b.State(false);
+b.State(false);
+WriteLine((c.Value() - n) # " " # (c.LastValue() - n));
+a.State(false);
+WriteLine((c.Value() - n) # " " # (c.LastValue() - n));
+list.Remove(a.ID());
+dom.DeleteObject(a.ID());
+list.Remove(b.ID());
+dom.DeleteObject(b.ID());
+`;
+
+            // (the number was set on every update of an alarm or service
+            // message, even if it did not change, so that LastValue() was
+            // overwritten with the current value)
+            it('should keep LastValue() of ID_GW_SYSALARM on updates of an alarm', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(counterScript('ID_GW_SYSALARM', 'ID_SYSTEM_VARIABLES', 'atSystem', 'lastvalue-467-alarm'));
+                output.should.equal('1 0\r\n1 0\r\n0 1\r\n');
+            });
+
+            it('should keep LastValue() of ID_GW_SYSSERVICE on updates of a service message', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(counterScript('ID_GW_SYSSERVICE', 'ID_SERVICES', 'atService', 'lastvalue-467-service'));
+                output.should.equal('1 0\r\n1 0\r\n0 1\r\n');
+            });
+        });
     });
 
     // cleanup test environment
