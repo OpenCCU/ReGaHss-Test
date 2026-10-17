@@ -1498,6 +1498,36 @@ WriteLine("[" # s.Substr(0, s.Length()).Trim() # "]");
                 output.should.equal('Root System Variables\r\n[abc]\r\n');
             });
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/889
+        describe('Next() of a time module which was never active', function () {
+            // fixed in ReGaHss R1.00.0388.0266
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // (the timer thread initializes time modules only while they are
+            // enabled, so Next() of a time module which was not enabled since
+            // the start of ReGaHss, e.g. of an inactive program, logged
+            // "interface pointer are not initialized" and returned an empty
+            // string, which made e.g. Next().Format() fail with a script
+            // runtime error)
+            it('should return the next time of a disabled time module', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object tm = dom.CreateObject(OT_CALENDARDP, "Next 889");
+tm.Enabled(false);
+tm.TimerType(ttCalDaily);
+tm.Time("12:00:00");
+dom.GetObject(ID_CALENDARDPS).Add(tm);
+WriteLine(tm.Enabled() # " " # tm.Next().Format("%H:%M:%S"));
+dom.GetObject(ID_CALENDARDPS).Remove(tm.ID());
+dom.DeleteObject(tm.ID());
+WriteLine("done");
+                `);
+                output.should.equal('false 12:00:00\r\ndone\r\n');
+            });
+        });
     });
 
     // cleanup test environment
