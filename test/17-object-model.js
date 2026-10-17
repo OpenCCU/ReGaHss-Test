@@ -277,8 +277,9 @@ dom.GetObject("OM String").State("Grüße");
 string name;
 foreach (name, "OM Bool\\tOM Alarm\\tOM Number\\tOM Enum\\tOM String\\tOM Room\\tOM Function\\tOM Program") {
   object o = dom.GetObject(name);
-  ! (result in a variable: "Write(dom.DeleteObject(o.ID()) # ...)" would pass
-  ! the concatenation to DeleteObject, see test/corpus/09-expressions.rega)
+  ! (result in a variable: with ReGaHss < R1.00.0388.0266
+  ! "Write(dom.DeleteObject(o.ID()) # ...)" passed the concatenation to
+  ! DeleteObject, see test/corpus/09-expressions.rega)
   var deleted = dom.DeleteObject(o);
   Write(deleted # ",");
 }

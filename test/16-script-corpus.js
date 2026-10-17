@@ -7,6 +7,11 @@
 //
 //   REGA_CORPUS_RECORD=1   record the results of the ReGaHss under test as
 //                          expected results (rewrites the corpus files)
+//   REGA_DEV_BUILD=1       the ReGaHss under test is a development build (e.g.
+//                          of a ReGaHss pull request), which may already
+//                          contain changes after the version it reports, so
+//                          the expected results of later versions are accepted
+//                          as well (set by the docker image for REGA_BINARY)
 //   REGA_CORPUS=<pattern>  only run corpus files matching the pattern
 //   REGA_REF_BIN=<file>    differential test: additionally execute all cases
 //                          with this (reference) ReGaHss binary and report the
@@ -20,6 +25,7 @@ const {
     regaLabel,
     regaPreload,
     regaArch,
+    regaVersion,
     indent,
     initTest,
     cleanupTest,
@@ -29,7 +35,7 @@ const {
     ReGaInstance
 } = require('../lib/helper.js');
 const {
-    parseCorpus, writeCorpus, execScript, scriptVars, expectedOutput
+    parseCorpus, writeCorpus, execScript, scriptVars, matchingSection, expectedResults
 } = require('../lib/corpus.js');
 
 require('should');
@@ -40,6 +46,7 @@ const filter = process.env.REGA_CORPUS ? new RegExp(process.env.REGA_CORPUS) : n
 const refBin = process.env.REGA_REF_BIN || '';
 const refLibDir = process.env.REGA_REF_LIB_DIR || '';
 const diffReport = process.env.REGA_DIFF_REPORT || '';
+const devBuild = process.env.REGA_DEV_BUILD === '1';
 
 const corpusFiles = fs.readdirSync(corpusDir)
     .filter(file => file.endsWith('.rega') && (!filter || filter.test(file)))
@@ -172,21 +179,45 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                         }
 
                         if (record) {
-                            testcase.recorded = result;
+                            // (into the sections applying to the ReGaHss under test)
+                            const rega = {arch: regaArch, version: regaVersion()};
+                            const sections = {};
+                            for (const kind of ['output', 'vars', 'errors']) {
+                                sections[kind] = matchingSection(testcase, kind, rega);
+                            }
+
+                            testcase.recorded = {...result, sections};
                             return;
                         }
 
-                        const output = expectedOutput(testcase, regaArch);
-                        if (output === null) {
+                        const candidates = expectedResults(testcase, {arch: regaArch, version: regaVersion(), devBuild});
+                        if (candidates[0].output === null) {
                             throw new Error('no expected output recorded ' + location + ', record it with REGA_CORPUS_RECORD=1');
                         }
 
-                        result.output.should.equal(output, 'output of "' + testcase.name + '" ' + location);
-                        if (testcase.expectedVars !== null) {
-                            scriptVars(result.objects).should.deepEqual(testcase.expectedVars, 'variables of "' + testcase.name + '" ' + location);
+                        // (a development build passes with the expected results of
+                        // its version or of a later one, otherwise the failure for
+                        // its version is reported)
+                        let failure = null;
+                        for (const expected of candidates) {
+                            try {
+                                const label = expected === candidates[0] ? '' : ' (expected for ' + expected.version + ')';
+                                result.output.should.equal(expected.output, 'output of "' + testcase.name + '" ' + location + label);
+                                if (expected.vars !== null) {
+                                    scriptVars(result.objects).should.deepEqual(expected.vars, 'variables of "' + testcase.name + '" ' + location + label);
+                                }
+
+                                result.errors.should.deepEqual(expected.errors, 'logged errors of "' + testcase.name + '" ' + location + label);
+                                failure = null;
+                                break;
+                            } catch (error) {
+                                failure ||= error;
+                            }
                         }
 
-                        result.errors.should.deepEqual(testcase.expectedErrors, 'logged errors of "' + testcase.name + '" ' + location);
+                        if (failure) {
+                            throw failure;
+                        }
                     });
                 }
             });

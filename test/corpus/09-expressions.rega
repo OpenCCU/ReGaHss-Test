@@ -23,6 +23,7 @@ WriteLine(dom.GetObject(v.ID()).Name());
 VarBool1
 ---- errors
 ScriptRuntimeError: object v = dom.GetObject("VarBool1");
+---- errors [>=R1.00.0388.0266]
 ----
 
 #### concatenation with a method chain on a nested call
@@ -30,8 +31,11 @@ object v = dom.GetObject("VarBool1");
 WriteLine("x" # dom.GetObject(v.ID()).Name() # "|");
 ---- output
 x
+---- output [>=R1.00.0388.0266]
+xVarBool1|
 ---- errors
 ScriptRuntimeError: object v = dom.GetObject("VarBool1");
+---- errors [>=R1.00.0388.0266]
 ----
 
 #### concatenation with a nested call
@@ -39,6 +43,8 @@ object v = dom.GetObject("VarBool1");
 Write(dom.GetObject(v.ID()) # "|");
 ---- output
 null\c
+---- output [>=R1.00.0388.0266]
+VarBool1|\c
 ----
 
 #### concatenation with a nested call inside foreach
@@ -49,6 +55,8 @@ foreach (name, "a\tb") {
 }
 ---- output
 nullnull\c
+---- output [>=R1.00.0388.0266]
+VarBool1|VarBool1|\c
 ----
 
 #### nested call as argument followed by concatenation
@@ -76,6 +84,9 @@ if (b) { dom.DeleteObject(b); }
 ---- output
 false
 ExprTempVar
+---- output [>=R1.00.0388.0266]
+true|
+null
 ----
 
 #### DeleteObject with a nested call assigned to a variable
