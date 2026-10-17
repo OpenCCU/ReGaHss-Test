@@ -1511,7 +1511,8 @@ WriteLine("[" # s.Substr(0, s.Length()).Trim() # "]");
             // the start of ReGaHss, e.g. of an inactive program, logged
             // "interface pointer are not initialized" and returned an empty
             // string, which made e.g. Next().Format() fail with a script
-            // runtime error)
+            // runtime error; changes of a disabled time module were not
+            // taken into account by Next() either)
             it('should return the next time of a disabled time module', async function () {
                 this.timeout(30_000);
                 const {output} = await rega.exec(`
@@ -1521,11 +1522,13 @@ tm.TimerType(ttCalDaily);
 tm.Time("12:00:00");
 dom.GetObject(ID_CALENDARDPS).Add(tm);
 WriteLine(tm.Enabled() # " " # tm.Next().Format("%H:%M:%S"));
+tm.Time("13:00:00");
+WriteLine(tm.Next().Format("%H:%M:%S"));
 dom.GetObject(ID_CALENDARDPS).Remove(tm.ID());
 dom.DeleteObject(tm.ID());
 WriteLine("done");
                 `);
-                output.should.equal('false 12:00:00\r\ndone\r\n');
+                output.should.equal('false 12:00:00\r\n13:00:00\r\ndone\r\n');
             });
         });
     });
