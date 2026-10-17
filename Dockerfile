@@ -28,7 +28,8 @@
 #   REGA_BINARY  ReGaHss binary in the build context to test instead of the
 #              one of OpenCCU-Base, e.g. a build of a ReGaHss pull request
 #              (optional; ASan/UBSan instrumented: x86_64-linux-gnu only, run
-#              like the asan variant)
+#              like the asan variant; tested as development build, see
+#              REGA_DEV_BUILD in test/16-script-corpus.js)
 
 # fetch the required parts of OpenCCU-Base
 FROM node:26-bookworm-slim AS openccu-base
@@ -120,7 +121,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     REGA_BIN=/bin/ReGaHss \
     REGA_LINEBUF_LIB=/usr/local/lib/regahss-test/liblinebuf.so \
     REGA_FAKETIME_LIB=/usr/local/lib/faketime/libfaketime.so.1 \
-    REGA_TIMESHIFT_LIB=/usr/local/lib/regahss-test/libtimeshift.so
+    REGA_TIMESHIFT_LIB=/usr/local/lib/regahss-test/libtimeshift.so \
+    REGA_DEV_BUILD=${REGA_BINARY:+1}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN packages=(ca-certificates gdb procps tzdata) \
  && case "${REGA_ARCH}" in \

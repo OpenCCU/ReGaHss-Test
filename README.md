@@ -119,6 +119,7 @@ sudo env "PATH=$PATH" TZ=Europe/Berlin npm test
 | `SIM_OUTPUT` | – | set to `1` to show the output of the interface simulator (RPC calls in both directions) |
 | `REGA_CORPUS` | – | only run the script corpus files matching this regular expression |
 | `REGA_CORPUS_RECORD` | – | set to `1` to write the results of the ReGaHss under test into the script corpus files |
+| `REGA_DEV_BUILD` | – (docker image: `1` for a `REGA_BINARY`) | set to `1` if the ReGaHss under test is a development build, which may already contain changes after the version it reports (the script corpus then accepts the results of later versions as well) |
 | `REGA_REF_BIN` | – | reference ReGaHss to execute the script corpus with as well (set automatically in the docker image if built with `REF_BASE_REF`) |
 | `REGA_REF_LIB_DIR` | – | directory with the `libXmlRpc`/`libxmlparser` of the reference ReGaHss |
 | `REGA_DIFF_REPORT` | – | markdown file to write the differences between ReGaHss and the reference ReGaHss to |
@@ -203,6 +204,8 @@ s=ab
 * `!! fixed-time: <date>` freezes the clock of ReGaHss (libfaketime) for all cases of the file
 * each case starts with `#### <name>` followed by the script, the expected `output` (every line ends with CR/LF; `\r`, `\n`, `\t` and `\\` are escaped and a trailing `\c` means that the output does not end with a line break), the expected `vars` (values of the script variables) and, only if there are any, the expected `errors` (script errors logged by ReGaHss, normalized)
 * new cases can be added without expectations and recorded with `REGA_CORPUS_RECORD=1 npx mocha test/16-script-corpus.js`; the recorded results must be reviewed before committing them
+* results which differ on other architectures or ReGaHss versions are given in additional qualified sections, e.g. `---- output [aarch64 arm]` or, for a changed behaviour, `---- output [>=R1.00.0388.0266]` / `---- errors [>=R1.00.0388.0266]` (also for `vars`); the last section matching the architecture and version of the ReGaHss under test replaces the unqualified one (an empty qualified `errors` section: no errors), and recorded results are written into the matching sections
+* a development build (e.g. of a ReGaHss pull request) reports the version of the last release but may already contain a later change of the behaviour: with `REGA_DEV_BUILD=1` (set by the docker image for a `REGA_BINARY`) the results of later versions are accepted as well
 
 With `REGA_REF_BIN` every case is executed by a reference ReGaHss as well and the differences are written to a markdown report (informational, they do not make the tests fail). The CI uses the ReGaHss of the OpenCCU-Base revision before the last change of the binary as reference and adds the report to the job summary.
 

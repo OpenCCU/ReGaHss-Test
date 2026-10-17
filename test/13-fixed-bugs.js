@@ -1454,6 +1454,50 @@ dom.DeleteObject(b.ID());
                 output.should.equal('1 0\r\n1 0\r\n0 1\r\n');
             });
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/983
+        describe('method calls on the result of a method call with a method call without parameters as last parameter', function () {
+            // fixed in ReGaHss R1.00.0388.0266
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // (the end of the parameters of the outer method call was taken as
+            // the end of the parameters of the inner method call, so that the
+            // following method was called on the parameter instead of the
+            // result of the outer method call, e.g. Name() on the channel ID
+            // of 'dom.GetObject(o.Channel()).Name()', which failed with a
+            // script runtime error or returned a wrong result)
+            it('should call Name() on the result of dom.GetObject(o.Channel())', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+string id;
+object src = null;
+foreach (id, dom.GetObject(ID_DATAPOINTS).EnumUsedIDs()) {
+  object o = dom.GetObject(id);
+  if (o && (o.TypeName() == "HSSDP") && !src) {
+    src = o;
+  }
+}
+string works = (dom.GetObject(dom.GetObject(src).Channel())).Name();
+string breaks = dom.GetObject(dom.GetObject(src).Channel()).Name();
+WriteLine((works != "") # " " # (breaks == works));
+WriteLine(dom.GetObject(src.Channel()).Name() == works);
+WriteLine("done");
+                `);
+                output.should.equal('true true\r\ntrue\r\ndone\r\n');
+            });
+
+            it('should call a method on the result of a method call with ID() or Length() as last parameter', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+WriteLine(dom.GetObject(dom.GetObject(ID_SYSTEM_VARIABLES).ID()).Name());
+string s = "  abc  ";
+WriteLine("[" # s.Substr(0, s.Length()).Trim() # "]");
+                `);
+                output.should.equal('Root System Variables\r\n[abc]\r\n');
+            });
+        });
     });
 
     // cleanup test environment
