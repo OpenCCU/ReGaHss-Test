@@ -15,7 +15,8 @@ const {
     simulator,
     waitForSim,
     toTimestamp,
-    requireRegaVersion
+    requireRegaVersion,
+    regaInstance
 } = require('../lib/helper.js');
 const {timerScript} = require('../lib/program-builder.js');
 const {
@@ -404,6 +405,51 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
                 await exec('dom.GetObject("PC Trigger Info").ProgramExecute();');
                 await until(() => value('PC Trigger Exec'), '1.000000');
                 (await triggers()).should.equal('65535 65535');
+            });
+        });
+
+        describe('variables of other scripts', function () {
+            // (warning added in ReGaHss R1.00.0388.0266)
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // (the scripts of all programs share the variables, so that a script
+            // can use a variable declared by another one, see
+            // https://github.com/OpenCCU/OpenCCU/issues/84; as they are going to
+            // be local to each script, such a use is logged)
+            it('should warn once about a variable declared by another script', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SV Define Trigger': 'bool', 'SV Use Trigger': 'bool', 'SV Out': 'string'});
+                await createProgram({
+                    name: 'SV Define',
+                    rules: [{conditions: [[{sysvar: 'SV Define Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'string svShared = "defined"; dom.GetObject("SV Out").State(svShared);'}]}]
+                });
+                await createProgram({
+                    name: 'SV Use',
+                    rules: [{conditions: [[{sysvar: 'SV Use Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'string svOwn = "used"; dom.GetObject("SV Out").State(svShared # " " # svOwn);'}]}]
+                });
+                const warnings = [];
+                const untap = regaInstance().log.tap(line => {
+                    if (/ uses variable\(s\) /.test(line)) {
+                        warnings.push(line);
+                    }
+                });
+                try {
+                    for (let run = 0; run < 2; run++) {
+                        await set('SV Out', '');
+                        await set('SV Define Trigger', true);
+                        await until(() => value('SV Out'), 'defined');
+                        // (the variable is still shared)
+                        await set('SV Use Trigger', true);
+                        await until(() => value('SV Out'), 'defined used');
+                    }
+                } finally {
+                    untap();
+                }
+
+                warnings.length.should.equal(1, warnings.join('\n'));
+                warnings[0].should.match(/script of program 'SV Use' \(ID \d+\) uses variable\(s\) 'svShared' without declaring them before/);
             });
         });
 
