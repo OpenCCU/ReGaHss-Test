@@ -453,6 +453,42 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
             });
         });
 
+        describe('scripts setting an alarm with an expression', function () {
+            // fixed in ReGaHss R1.00.0388.0266
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // (the expression of an alarm is evaluated while State() is called;
+            // it was parsed by the same parser as the running script of the
+            // program, which overwrote the code of the script, so that the
+            // script ended with a script runtime error after State())
+            it('should continue the script of a program after setting the alarm', async function () {
+                this.timeout(30_000);
+                await createSysvars({'NE Alarm Trigger': 'bool', 'NE Alarm Out': 'string', 'NE Alarm In': 'string'});
+                const output = await exec(`
+object a = dom.CreateObject(OT_ALARMDP, "NE Alarm");
+dom.GetObject(ID_SYSTEM_VARIABLES).Add(a.ID());
+a.ValueType(ivtBinary);
+a.ValueSubType(istAlarm);
+a.AlType(atSystem);
+a.AlSetBinaryCondition();
+a.AlExpression('string neInner = "inner"; dom.GetObject("NE Alarm In").State(neInner);');
+a.AlArm(true);
+Write("ok");
+                `);
+                output.should.equal('ok');
+                await createProgram({
+                    name: 'NE Program',
+                    rules: [{conditions: [[{sysvar: 'NE Alarm Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'string neOuter = "outer"; dom.GetObject("NE Alarm").State(true); dom.GetObject("NE Alarm Out").State(neOuter);'}]}]
+                });
+                await set('NE Alarm Trigger', true);
+                await until(() => value('NE Alarm Out'), 'outer');
+                const inner = await value('NE Alarm In');
+                inner.should.equal('inner');
+            });
+        });
+
         describe('time modules', function () {
             it('should execute programs with periodic timers', async function () {
                 this.timeout(30_000);
