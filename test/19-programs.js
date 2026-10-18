@@ -538,6 +538,61 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
     }
 
     // see https://github.com/OpenCCU/OpenCCU/issues/886
+    // (a delay was converted to the time of day of today, which shifted a time
+    // skipped by the change to daylight saving time by an hour: on that day a
+    // delay of 2 hours was output (e.g. by the WebUI) as 1 hour and also saved
+    // this way, see https://github.com/OpenCCU/OpenCCU/issues/584)
+    const dstDelays = {7200: '02:00:00', 7260: '02:01:00', 10_740: '02:59:00'};
+    const readDelays = () => exec(Object.keys(dstDelays).map(delay => `Write(dom.GetObject("PC DST ${delay}").Rule().RuleDestination().DestSingleDestination(0).DestinationValueParam().ToString().Substr(11, 8) # " ");`).join('\n'));
+
+    describe('delays of programs on the day of the change to daylight saving time', function () {
+        // fixed in ReGaHss R1.00.0388.0266
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0266');
+        });
+
+        initTest({sim: false, fixedTime: '2026-03-29 12:00:00 CEST'});
+
+        describe('delays of 2 hours', function () {
+            it('should keep the delays', async function () {
+                this.timeout(30_000);
+                await createSysvars({'PC DST Trigger': 'bool', 'PC DST Out': 'string'});
+                for (const delay of Object.keys(dstDelays)) {
+                    await createProgram({
+                        name: 'PC DST ' + delay,
+                        rules: [{conditions: [[{sysvar: 'PC DST Trigger', value: true}]], destinations: [{sysvar: 'PC DST Out', value: 'done', delay: Number(delay)}]}]
+                    });
+                }
+
+                const delays = await readDelays();
+                delays.should.equal(Object.values(dstDelays).join(' ') + ' ');
+                await exec('system.Save();');
+            });
+        });
+
+        cleanupTest();
+    });
+
+    describe('delays of programs saved on the day of the change to daylight saving time', function () {
+        // fixed in ReGaHss R1.00.0388.0266
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0266');
+        });
+
+        // (the homematic.regadom saved by the previous ReGaHss is kept)
+        initTest({sim: false, fixedTime: '2026-03-30 12:00:00 CEST', nocopy: true});
+
+        describe('delays of 2 hours after a restart on the next day', function () {
+            it('should keep the delays', async function () {
+                this.timeout(30_000);
+                const delays = await readDelays();
+                delays.should.equal(Object.values(dstDelays).join(' ') + ' ');
+            });
+        });
+
+        cleanupTest();
+    });
+
     describe('monthly time modules repeated every n months', function () {
         // fixed in ReGaHss R1.00.0388.0266
         before(function () {
