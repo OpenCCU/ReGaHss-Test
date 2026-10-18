@@ -10,6 +10,7 @@ const {
     regaInstance,
     requireRegaVersion
 } = require('../lib/helper.js');
+const {createSysvars, createProgram, set, value} = require('../lib/script-helpers.js');
 
 require('should');
 
@@ -1529,6 +1530,57 @@ dom.DeleteObject(tm.ID());
 WriteLine("done");
                 `);
                 output.should.equal('false 12:00:00\r\n13:00:00\r\ndone\r\n');
+            });
+        });
+
+        describe('scripts with a syntax error', function () {
+            // fixed in ReGaHss R1.00.0388.0266
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0266');
+            });
+
+            // (the scripts of programs, alarms and mappings were executed up
+            // to the syntax error, e.g. the first statement and the second one
+            // with a truncated parameter, unlike scripts of web requests)
+            const script = name => `object l = dom.GetObject("${name}");
+l.State(l.Value() # "1");
+l.State(l.Value() # "2" # undeclaredSyntaxError);
+l.State(l.Value() # "3");`;
+
+            it('should not execute the script of a program', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SE Trigger': 'bool', 'SE Program Log': 'string'});
+                await createProgram({
+                    name: 'SE Program',
+                    rules: [{conditions: [[{sysvar: 'SE Trigger', value: true, trigger: 'change'}]], destinations: [{script: script('SE Program Log')}]}]
+                });
+                const logged = regaInstance().waitFor(/script of program 'SE Program' \(ID \d+\) not executed due to a syntax error/, {buffered: false, timeout: 20_000});
+                await set('SE Trigger', true);
+                await logged;
+                const log = await value('SE Program Log');
+                log.should.equal('');
+            });
+
+            it('should not execute the script of an alarm', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SE Alarm Log': 'string'});
+                const logged = regaInstance().waitFor(/script of alarm 'SE Alarm' \(ID \d+\) not executed due to a syntax error/, {buffered: false, timeout: 20_000});
+                const {output} = await rega.exec(`
+object a = dom.CreateObject(OT_ALARMDP, "SE Alarm");
+dom.GetObject(ID_SYSTEM_VARIABLES).Add(a.ID());
+a.ValueType(ivtBinary);
+a.ValueSubType(istAlarm);
+a.AlType(atSystem);
+a.AlSetBinaryCondition();
+a.AlExpression('${script('SE Alarm Log').replaceAll('\n', ' ')}');
+a.AlArm(true);
+a.State(true);
+WriteLine(dom.GetObject("SE Alarm Log").Value());
+dom.GetObject(ID_SYSTEM_VARIABLES).Remove(a.ID());
+dom.DeleteObject(a.ID());
+                `);
+                await logged;
+                output.should.equal('\r\n');
             });
         });
     });
