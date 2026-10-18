@@ -490,4 +490,68 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
             cleanupTest();
         });
     }
+
+    // see https://github.com/OpenCCU/OpenCCU/issues/886
+    describe('monthly time modules repeated every n months', function () {
+        // fixed in ReGaHss R1.00.0388.0266
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0266');
+        });
+
+        initTest({sim: false, fixedTime: '2020-08-08 12:00:00 CEST'});
+
+        // (the day of the month of the reference time was compared with the
+        // day of a later month of the repetition, so that a repetition was
+        // skipped or the wrong day computed, e.g. 07.07.2021 instead of
+        // 06.01.2021 for the 1st Wednesday of every 6th month from 01.07.2020)
+        const cases = [
+            // [begin, weekdays (0: day of the month), period (n-th weekday or day), repetition, expected Next()]
+            ['2020-10-01', 4, 1, 6, '2020-10-07'],
+            ['2020-08-01', 4, 1, 6, '2021-02-03'],
+            ['2020-07-01', 4, 1, 6, '2021-01-06'],
+            ['2020-06-01', 4, 1, 6, '2020-12-02'],
+            ['2020-05-01', 4, 1, 6, '2020-11-04'],
+            ['2020-04-01', 4, 1, 6, '2020-10-07'],
+            ['2020-03-01', 4, 1, 6, '2020-09-02'],
+            ['2020-02-01', 4, 1, 6, '2021-02-03'],
+            ['2020-01-01', 4, 1, 6, '2021-01-06'],
+            ['2019-09-01', 4, 1, 6, '2020-09-02'],
+            ['2020-01-01', 1, 3, 2, '2020-09-21'],
+            ['2020-07-15', 0, 15, 6, '2021-01-15'],
+            ['2020-07-05', 0, 5, 6, '2021-01-05'],
+            ['2020-03-20', 0, 20, 6, '2020-09-20'],
+            ['2020-02-15', 0, 15, 6, '2020-08-15'],
+            ['2020-02-05', 0, 5, 6, '2021-02-05'],
+            ['2020-01-10', 0, 10, 3, '2020-10-10']
+        ];
+
+        describe('Next() of the time modules', function () {
+            it('should return the next time of the repetition', async function () {
+                this.timeout(30_000);
+                let script = '';
+                for (const [begin, weekdays, period, repetition] of cases) {
+                    script += `
+object tm = dom.CreateObject(OT_CALENDARDP, "Monthly ${begin} ${weekdays} ${period}");
+tm.Enabled(false);
+tm.TimerType(ttCalMonthly);
+tm.Time("${begin} 08:00:00");
+tm.Begin("${begin} 08:00:00");
+tm.Weekdays(${weekdays});
+tm.Period(${period});
+tm.CalRepetitionValue(${repetition});
+dom.GetObject(ID_CALENDARDPS).Add(tm);
+WriteLine(tm.Next());
+dom.GetObject(ID_CALENDARDPS).Remove(tm.ID());
+dom.DeleteObject(tm.ID());
+`;
+                }
+
+                const output = await exec(script);
+                const lines = output.split('\r\n').slice(0, -1);
+                lines.should.deepEqual(cases.map(testcase => testcase.at(-1) + ' 08:00:00'));
+            });
+        });
+
+        cleanupTest();
+    });
 });
