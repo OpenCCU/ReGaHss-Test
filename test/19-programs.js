@@ -582,6 +582,13 @@ Write("ok");
                 requireRegaVersion(this, 'R1.00.0388.0267');
             });
 
+            // (initTest() waits for the normal operation only with the
+            // simulator; a value change before it may not trigger the programs)
+            before(async function () {
+                this.timeout(60_000);
+                await regaInstance().waitFor(/ReGa entering normal operation/);
+            });
+
             // (by default the scripts of all programs share their variables, so
             // that a script can use a variable declared by another one, see
             // https://github.com/OpenCCU/OpenCCU/issues/84; with
