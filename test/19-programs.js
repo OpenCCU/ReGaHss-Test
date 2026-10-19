@@ -780,4 +780,96 @@ dom.DeleteObject(tm.ID());
 
         cleanupTest();
     });
+
+    // see https://github.com/OpenCCU/OpenCCU/issues/223
+    // (all active programs were executed at the start of ReGaHss if their
+    // conditions were met; with ExecuteOnStartup() this can be switched off
+    // per program, which is the default for a new program)
+    describe('programs executed at the start of ReGaHss', function () {
+        // added in ReGaHss R1.00.0388.0267
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0267');
+        });
+
+        initTest({sim: false, normalOperation: true});
+
+        describe('ExecuteOnStartup()', function () {
+            it('should not execute a new program at the start by default', async function () {
+                const output = await exec(`
+object p = dom.CreateObject(OT_PROGRAM);
+Write(p.ExecuteOnStartup());
+p.ExecuteOnStartup(true);
+Write(" " # p.ExecuteOnStartup());
+dom.DeleteObject(p.ID());
+                `);
+                output.should.equal('false true');
+            });
+
+            // (programs saved by an earlier version are executed at the start as before)
+            it('should execute a program of an earlier version at the start', async function () {
+                const output = await exec('Write(dom.GetObject("Bool1OnFalse").ExecuteOnStartup());');
+                output.should.equal('true');
+            });
+
+            it('should create the programs to be checked after a restart', async function () {
+                this.timeout(30_000);
+                await createSysvars({
+                    'ES Trigger': 'bool', 'ES Count On': 'number', 'ES Count Off': 'number'
+                });
+                for (const name of ['On', 'Off']) {
+                    await createProgram({
+                        name: 'ES ' + name,
+                        rules: [{conditions: [[{sysvar: 'ES Trigger', value: true, trigger: 'update'}]], destinations: [increment('ES Count ' + name)]}]
+                    });
+                }
+
+                const output = await exec(`
+dom.GetObject("ES On").ExecuteOnStartup(true);
+dom.GetObject("ES Trigger").State(true);
+Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").ExecuteOnStartup());
+                `);
+                output.should.equal('true false');
+                // (the programs may have been executed by the change of the trigger)
+                await sleep(1000);
+                await set('ES Count On', 0);
+                await set('ES Count Off', 0);
+                await exec('system.Save();');
+            });
+        });
+
+        cleanupTest();
+    });
+
+    describe('programs executed at a restart of ReGaHss', function () {
+        // added in ReGaHss R1.00.0388.0267
+        before(function () {
+            requireRegaVersion(this, 'R1.00.0388.0267');
+        });
+
+        // (the homematic.regadom saved by the previous ReGaHss is kept)
+        initTest({sim: false, nocopy: true, normalOperation: true});
+
+        describe('ExecuteOnStartup() after a restart', function () {
+            it('should keep the setting', async function () {
+                const output = await exec('Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").ExecuteOnStartup());');
+                output.should.equal('true false');
+            });
+
+            it('should execute only the program to be executed at the start', async function () {
+                this.timeout(30_000);
+                await until(() => value('ES Count On'), '1.000000');
+                // (the programs are executed at the start before the normal operation)
+                const off = await value('ES Count Off');
+                off.should.equal('0.000000');
+            });
+
+            it('should execute the program not executed at the start at its next trigger', async function () {
+                this.timeout(30_000);
+                await set('ES Trigger', true);
+                await until(() => value('ES Count Off'), '1.000000');
+            });
+        });
+
+        cleanupTest();
+    });
 });
