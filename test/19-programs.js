@@ -208,8 +208,7 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 });
                 await setAndSettle('PC C', true);
                 await setAndSettle('PC D', true);
-                await sleep(1000);
-                (await value('PC Or')).should.equal('2.000000');
+                await until(() => value('PC Or'), '2.000000');
             });
 
             it('should execute the first matching rule of "if", "else if" and "else"', async function () {
@@ -572,6 +571,91 @@ Write("ok");
             cleanupTest();
         });
     }
+
+    describe('programs created via script with variables local to them', function () {
+        // (ScriptVariableScope=local is ignored before ReGaHss R1.00.0388.0267)
+        initTest({sim: false, config: {ScriptVariableScope: 'local'}});
+
+        describe('variables of the scripts', function () {
+            // (added in ReGaHss R1.00.0388.0267)
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0267');
+            });
+
+            // (by default the scripts of all programs share their variables, so
+            // that a script can use a variable declared by another one, see
+            // https://github.com/OpenCCU/OpenCCU/issues/84; with
+            // ScriptVariableScope=local the variables of a script are local to it)
+            it('should not let a script use a variable declared by another script', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SL Define Trigger': 'bool', 'SL Use Trigger': 'bool', 'SL Out': 'string'});
+                await createProgram({
+                    name: 'SL Define',
+                    rules: [{conditions: [[{sysvar: 'SL Define Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'string slShared = "defined"; dom.GetObject("SL Out").State(slShared);'}]}]
+                });
+                await createProgram({
+                    name: 'SL Use',
+                    rules: [{conditions: [[{sysvar: 'SL Use Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'dom.GetObject("SL Out").State(slShared # " used");'}]}]
+                });
+                const warnings = [];
+                const untap = regaInstance().log.tap(line => {
+                    if (/ uses variable\(s\) /.test(line)) {
+                        warnings.push(line);
+                    }
+                });
+                try {
+                    await set('SL Define Trigger', true);
+                    await until(() => value('SL Out'), 'defined');
+                    const logged = regaInstance().waitFor(/script of program 'SL Use' \(ID \d+\) not executed due to a syntax error/, {buffered: false, timeout: 20_000});
+                    await set('SL Use Trigger', true);
+                    await logged;
+                } finally {
+                    untap();
+                }
+
+                const out = await value('SL Out');
+                out.should.equal('defined');
+                warnings.should.be.empty();
+            });
+
+            it('should share session variables between scripts', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SL Set Trigger': 'bool', 'SL Get Trigger': 'bool', 'SL Session': 'string'});
+                await createProgram({
+                    name: 'SL Set',
+                    rules: [{conditions: [[{sysvar: 'SL Set Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'system.SetSessionVar("slSession", "set"); dom.GetObject("SL Session").State("done");'}]}]
+                });
+                await createProgram({
+                    name: 'SL Get',
+                    rules: [{conditions: [[{sysvar: 'SL Get Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'dom.GetObject("SL Session").State(system.GetSessionVar("slSession") # " " # system.IsSessionVar("slSession") # " " # system.GetVar("slSession") # " " # system.IsVar("slSession"));'}]}]
+                });
+                await set('SL Set Trigger', true);
+                await until(() => value('SL Session'), 'done');
+                await set('SL Get Trigger', true);
+                await until(() => value('SL Session'), 'set true set true');
+            });
+
+            // (the syntax check of the WebUI's script editor declared the
+            // variables of the checked script for the scripts of all programs)
+            it('should not declare the variables of a syntax check for other scripts', async function () {
+                this.timeout(30_000);
+                await createSysvars({'SL Check Trigger': 'bool', 'SL Check Out': 'string'});
+                await createProgram({
+                    name: 'SL Check',
+                    rules: [{conditions: [[{sysvar: 'SL Check Trigger', value: true, trigger: 'update'}]], destinations: [{script: 'dom.GetObject("SL Check Out").State("checked " # slChecked);'}]}]
+                });
+                const check = await exec('Write(system.SyntaxCheck("string slChecked = \'value\';", "", "", ""));');
+                check.should.equal('');
+                const logged = regaInstance().waitFor(/script of program 'SL Check' \(ID \d+\) not executed due to a syntax error/, {buffered: false, timeout: 20_000});
+                await set('SL Check Trigger', true);
+                await logged;
+                const out = await value('SL Check Out');
+                out.should.equal('');
+            });
+        });
+
+        cleanupTest();
+    });
 
     // see https://github.com/OpenCCU/OpenCCU/issues/886
     describe('monthly time modules repeated every n months', function () {
