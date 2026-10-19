@@ -793,6 +793,47 @@ dom.DeleteObject(tm.ID());
 
         initTest({sim: false, normalOperation: true});
 
+        // see https://github.com/OpenCCU/OpenCCU/issues/228
+        // (an active program was also executed when it was activated, e.g.
+        // a new program at its first save in the WebUI)
+        describe('programs executed when they are activated', function () {
+            it('should not execute a new program when it is activated', async function () {
+                this.timeout(30_000);
+                await createSysvars({'EA Flag': 'bool', 'EA Count New': 'number', 'EA Count On': 'number'});
+                await set('EA Flag', true);
+                await createProgram({
+                    name: 'EA New',
+                    active: false,
+                    rules: [{conditions: [[{sysvar: 'EA Flag', value: true, trigger: 'update'}]], destinations: [increment('EA Count New')]}]
+                });
+                await exec('dom.GetObject("EA New").Active(true);');
+                await sleep(1000);
+                const count = await value('EA Count New');
+                count.should.equal('0.000000');
+            });
+
+            it('should not execute a program to be executed at the start when it is activated', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'EA On',
+                    active: false,
+                    rules: [{conditions: [[{sysvar: 'EA Flag', value: true, trigger: 'update'}]], destinations: [increment('EA Count On')]}]
+                });
+                await exec('object p = dom.GetObject("EA On"); p.ExecuteOnStartup(true); p.Active(true);');
+                await sleep(1000);
+                const count = await value('EA Count On');
+                count.should.equal('0.000000');
+            });
+
+            it('should not execute an active program again when it is activated', async function () {
+                this.timeout(30_000);
+                await exec('dom.GetObject("EA On").Active(true);');
+                await sleep(1000);
+                const count = await value('EA Count On');
+                count.should.equal('0.000000');
+            });
+        });
+
         describe('ExecuteOnStartup()', function () {
             it('should not execute a new program at the start by default', async function () {
                 const output = await exec(`
