@@ -878,6 +878,41 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
             });
         });
 
+        // (State(true) of a program called by a script did not evaluate the
+        // program: without a trigger data point "true" was not taken as a
+        // boolean, see https://github.com/OpenCCU/OpenCCU/issues/228)
+        describe('State() of a program', function () {
+            it('should evaluate a program and execute it with State(true)', async function () {
+                this.timeout(30_000);
+                await createSysvars({'ST Flag': 'bool', 'ST Count': 'number'});
+                await set('ST Flag', true);
+                await createProgram({
+                    name: 'ST Prg',
+                    rules: [{conditions: [[{sysvar: 'ST Flag', value: true, trigger: 'update'}]], destinations: [increment('ST Count')]}]
+                });
+                const output = await exec('Write(dom.GetObject("ST Prg").State(true));');
+                output.should.equal('true');
+                await until(() => value('ST Count'), '1.000000');
+            });
+
+            it('should evaluate a program and execute it with State(false)', async function () {
+                this.timeout(30_000);
+                const output = await exec('Write(dom.GetObject("ST Prg").State(false));');
+                output.should.equal('true');
+                await until(() => value('ST Count'), '2.000000');
+            });
+
+            it('should not execute a program with conditions not met with State(true)', async function () {
+                this.timeout(30_000);
+                await set('ST Flag', false);
+                const output = await exec('Write(dom.GetObject("ST Prg").State(true));');
+                output.should.equal('false');
+                await sleep(1000);
+                const count = await value('ST Count');
+                count.should.equal('2.000000');
+            });
+        });
+
         cleanupTest();
     });
 
