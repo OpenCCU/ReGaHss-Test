@@ -537,7 +537,9 @@ Write("ok");
         }
     ]) {
         describe('astro timer at ' + location.name, function () {
-            initTest({sim: false, faketime: location.start, rate: faketimeRate});
+            initTest({
+                sim: false, faketime: location.start, rate: faketimeRate, normalOperation: true
+            });
 
             describe('sunrise timer with an offset of one minute', function () {
                 let expected = null;
@@ -574,19 +576,12 @@ Write("ok");
 
     describe('programs created via script with variables local to them', function () {
         // (ScriptVariableScope=local is ignored before ReGaHss R1.00.0388.0267)
-        initTest({sim: false, config: {ScriptVariableScope: 'local'}});
+        initTest({sim: false, config: {ScriptVariableScope: 'local'}, normalOperation: true});
 
         describe('variables of the scripts', function () {
             // (added in ReGaHss R1.00.0388.0267)
             before(function () {
                 requireRegaVersion(this, 'R1.00.0388.0267');
-            });
-
-            // (initTest() waits for the normal operation only with the
-            // simulator; a value change before it may not trigger the programs)
-            before(async function () {
-                this.timeout(60_000);
-                await regaInstance().waitFor(/ReGa entering normal operation/);
             });
 
             // (by default the scripts of all programs share their variables, so
@@ -671,7 +666,7 @@ Write("ok");
             requireRegaVersion(this, 'R1.00.0388.0266');
         });
 
-        initTest({sim: false, fixedTime: '2020-08-08 12:00:00 CEST'});
+        initTest({sim: false, fixedTime: '2020-08-08 12:00:00 CEST', normalOperation: true});
 
         // (the day of the month of the reference time was compared with the
         // day of a later month of the repetition, so that a repetition was
@@ -741,7 +736,7 @@ dom.DeleteObject(tm.ID());
             requireRegaVersion(this, 'R1.00.0388.0266');
         });
 
-        initTest({sim: false, fixedTime: '2026-03-29 12:00:00 CEST'});
+        initTest({sim: false, fixedTime: '2026-03-29 12:00:00 CEST', normalOperation: true});
 
         describe('delays of 2 hours', function () {
             it('should keep the delays', async function () {
@@ -771,7 +766,9 @@ dom.DeleteObject(tm.ID());
         });
 
         // (the homematic.regadom saved by the previous ReGaHss is kept)
-        initTest({sim: false, fixedTime: '2026-03-30 12:00:00 CEST', nocopy: true});
+        initTest({
+            sim: false, fixedTime: '2026-03-30 12:00:00 CEST', nocopy: true, normalOperation: true
+        });
 
         describe('delays of 2 hours after a restart on the next day', function () {
             it('should keep the delays', async function () {
