@@ -45,7 +45,7 @@
     "should": "^13.2.3"
   },
   "devDependencies": {
-    "eslint": "^10.2.0",
+    "eslint": "^10.13.0",
     "xo": "^5.0.1"
   },
   "xo": [
