@@ -1583,6 +1583,63 @@ dom.DeleteObject(a.ID());
                 output.should.equal('\r\n');
             });
         });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/4722
+        describe('setters leaving a value on the stack of the script interpreter', function () {
+            // fixed in ReGaHss R1.00.0388.0269
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0269');
+            });
+
+            // (BreakOnRestart(value) of a rule destination, system.LogLevel(value)
+            // and system.SyslogIPAddress(value) left an extra value on the stack
+            // when their return value was used: a surrounding while loop ended
+            // after the current iteration and an expression around the call got
+            // a wrong result, e.g. "ARuleDestinationtrue" instead of "Atrue")
+            it('BreakOnRestart(value) of a rule destination', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+object prg = dom.CreateObject(OT_PROGRAM, "BOR 4722");
+dom.GetObject(ID_PROGRAMS).Add(prg.ID());
+object rule = prg.Rule();
+object cnd = rule.RuleAddCondition();
+object oDest = rule.RuleDestination();
+boolean bRes;
+integer i = 0;
+string sOut = "";
+while (i < 3) { sOut = sOut # i # " "; bRes = oDest.BreakOnRestart(false); i = i + 1; }
+WriteLine("while: " # sOut # bRes # " " # oDest.BreakOnRestart());
+i = 0; sOut = "";
+while (i < 3) { sOut = sOut # i # " "; var v = oDest.BreakOnRestart(true); i = i + 1; }
+WriteLine("var: " # sOut # v # " " # oDest.BreakOnRestart());
+WriteLine("1: " # ("A" # oDest.BreakOnRestart(false) # "B") # " " # oDest.BreakOnRestart());
+dom.GetObject(ID_PROGRAMS).Remove(prg.ID());
+dom.DeleteObject(prg.ID());
+WriteLine("done");
+                `);
+                output.should.equal('while: 0 1 2 true false\r\nvar: 0 1 2 true true\r\n1: AtrueB false\r\ndone\r\n');
+            });
+
+            it('system.LogLevel(value) and system.SyslogIPAddress(value)', async function () {
+                this.timeout(30_000);
+                const {output} = await rega.exec(`
+integer lv = system.LogLevel();
+string ip = "0.0.0.0";
+integer iRes;
+integer i = 0;
+string sOut = "";
+while (i < 3) { sOut = sOut # i # " "; iRes = system.LogLevel(lv); i = i + 1; }
+WriteLine("LogLevel: " # sOut # (system.LogLevel() == lv));
+i = 0; sOut = "";
+while (i < 3) { sOut = sOut # i # " "; iRes = system.SyslogIPAddress(ip); i = i + 1; }
+WriteLine("SyslogIPAddress: " # sOut # (system.SyslogIPAddress() == ip));
+WriteLine("1: " # ("A" # (system.LogLevel(lv) == system.LogLevel()) # "B"));
+WriteLine("2: " # ("A" # (system.SyslogIPAddress(ip) == system.SyslogIPAddress(ip)) # "B"));
+WriteLine("done");
+                `);
+                output.should.equal('LogLevel: 0 1 2 true\r\nSyslogIPAddress: 0 1 2 true\r\n1: AtrueB\r\n2: AtrueB\r\ndone\r\n');
+            });
+        });
     });
 
     // cleanup test environment
