@@ -16,7 +16,8 @@ const {
     waitForSim,
     toTimestamp,
     requireRegaVersion,
-    regaInstance
+    regaInstance,
+    waitForRega
 } = require('../lib/helper.js');
 const {timerScript} = require('../lib/program-builder.js');
 const {
@@ -1131,6 +1132,38 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
             });
         });
 
+        // https://github.com/OpenCCU/OpenCCU/issues/4775: fields which are
+        // invalid for the data point or system variable of a condition or
+        // destination (e.g. left by editing a program in an earlier version)
+        // are reported at the start of ReGaHss (not corrected)
+        describe('programs with invalid fields', function () {
+            it('should create the programs to be checked after a restart', async function () {
+                // added in ReGaHss R1.00.0388.0270
+                requireRegaVersion(this, 'R1.00.0388.0270');
+                this.timeout(30_000);
+                await createSysvars({'IW Bool': 'bool', 'IW Enum': 'number'});
+                await exec(`
+object sv = dom.GetObject("IW Enum");
+sv.ValueType(ivtInteger); sv.ValueSubType(istEnum); sv.ValueList("x;y;z"); sv.State(0);
+                `);
+                for (const name of ['IW Invalid', 'IW Valid']) {
+                    await createProgram({
+                        name,
+                        rules: [{conditions: [[{sysvar: 'IW Bool', value: true, trigger: 'change'}]], destinations: [{sysvar: 'IW Enum', value: 1}]}]
+                    });
+                }
+
+                // ("greater than" for a logic value, the index 4 of a value list
+                // with 3 entries; the setters of these fields do not correct them)
+                await exec(`
+object r = dom.GetObject("IW Invalid").Rule();
+r.RuleCondition(0).CndSingleCondition(0).ConditionType(8);
+r.RuleDestination().DestSingleDestination(0).DestinationValue(4);
+system.Save();
+                `);
+            });
+        });
+
         cleanupTest();
     });
 
@@ -1142,6 +1175,25 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
 
         // (the homematic.regadom saved by the previous ReGaHss is kept)
         initTest({sim: false, nocopy: true, normalOperation: true});
+
+        describe('programs with invalid fields after a restart', function () {
+            it('should warn about the invalid fields of a program', async function () {
+                // added in ReGaHss R1.00.0388.0270
+                requireRegaVersion(this, 'R1.00.0388.0270');
+                await waitForRega(/program \d+ 'IW Invalid', if, condition 1\.1: invalid ConditionType=8 /, {timeout: 5000});
+                await waitForRega(/program \d+ 'IW Invalid', if, activity 1: invalid DestinationValue=4 /, {timeout: 5000});
+            });
+
+            it('should not warn about a program with valid fields', async function () {
+                // added in ReGaHss R1.00.0388.0270
+                requireRegaVersion(this, 'R1.00.0388.0270');
+                let warned = true;
+                await waitForRega(/'IW Valid'.*: invalid/, {timeout: 1000}).catch(() => {
+                    warned = false;
+                });
+                warned.should.be.false();
+            });
+        });
 
         describe('ExecuteOnStartup() after a restart', function () {
             it('should keep the setting', async function () {
