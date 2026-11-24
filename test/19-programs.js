@@ -434,6 +434,197 @@ Write(r.RuleCondition(0).DestinationObject() # " " # r.RuleSubRule().RuleConditi
             });
         });
 
+        // https://github.com/OpenCCU/OpenCCU/issues/4775 and #4776: changing
+        // the data point or system variable of a condition or destination
+        // (like the WebUI does) kept the fields depending on it, e.g. the
+        // trigger "on change" for a key, the comparison "greater than" for a
+        // logic value or the index of an entry of another value list
+        describe('editing conditions and destinations', function () {
+            // added in ReGaHss R1.00.0388.0270
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0270');
+            });
+
+            const condition = name => `object sc = dom.GetObject(${JSON.stringify(name)}).Rule().RuleCondition(0).CndSingleCondition(0);`;
+            const destination = name => `object sd = dom.GetObject(${JSON.stringify(name)}).Rule().RuleDestination().DestSingleDestination(0);`;
+            const fields = 'Write(sc.ConditionType() # " " # sc.ConditionType2() # " " # sc.RightVal1());';
+            const id = name => `dom.GetObject(${JSON.stringify(name)}).ID()`;
+
+            it('should create the system variables', async function () {
+                this.timeout(30_000);
+                await createSysvars({
+                    'ED Num': 'number', 'ED Num 10': 'number', 'ED Bool': 'bool', 'ED Enum 5': 'number', 'ED Enum 3': 'number', 'ED Count': 'number'
+                });
+                await exec(`
+dom.GetObject("ED Num 10").ValueMin(0);
+dom.GetObject("ED Num 10").ValueMax(10);
+object sv = dom.GetObject("ED Enum 5");
+sv.ValueType(ivtInteger); sv.ValueSubType(istEnum); sv.ValueList("a;b;c;d;e"); sv.State(0);
+sv = dom.GetObject("ED Enum 3");
+sv.ValueType(ivtInteger); sv.ValueSubType(istEnum); sv.ValueList("x;y;z"); sv.State(0);
+                `);
+            });
+
+            it('should reset the trigger and comparison of a condition when a key is selected', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Key',
+                    rules: [{conditions: [[{datapoint: 'BidCos-RF.BidCoS-RF:1.LEVEL', value: 0, trigger: 'change'}]], destinations: [increment('ED Count')]}]
+                });
+                const key = 'BidCos-RF.BidCoS-RF:43.PRESS_SHORT';
+                const output = await exec(`${condition('ED Key')}
+sc.ConditionType(6);
+sc.LeftVal(${id(key)});
+Write(sc.ConditionType() # " " # sc.ConditionType2() # " " # (sc.ConditionChannel() == dom.GetObject(${JSON.stringify(key)}).Channel()));
+                `);
+                output.should.equal('1 1 true');
+            });
+
+            it('should correct the comparison of a condition when a logic value is selected', async function () {
+                this.timeout(30_000);
+                await set('ED Count', 0);
+                await createProgram({
+                    name: 'ED Logic',
+                    rules: [{
+                        conditions: [[{
+                            sysvar: 'ED Num', compare: '>', value: 5, trigger: 'update'
+                        }]], destinations: [increment('ED Count')]
+                    }]
+                });
+                // ("greater than" is invalid for a logic value, "on update" is kept)
+                const output = await exec(`${condition('ED Logic')}
+sc.LeftVal(${id('ED Bool')});
+dom.GetObject("ED Logic").ProgramUpdate();
+${fields}
+                `);
+                output.should.equal('1 13 false');
+                // (the condition "false" is met by false only)
+                await set('ED Bool', false);
+                await until(() => value('ED Count'), '1.000000');
+                await set('ED Bool', true);
+                await sleep(1000);
+                (await value('ED Count')).should.equal('1.000000');
+            });
+
+            it('should correct an index outside of the value list of a condition', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Enum',
+                    rules: [{conditions: [[{sysvar: 'ED Enum 5', value: 4, trigger: 'change'}]], destinations: [increment('ED Count')]}]
+                });
+                let output = await exec(`${condition('ED Enum')}
+sc.LeftVal(${id('ED Enum 3')});
+${fields}
+                `);
+                output.should.equal('5 4 0');
+                // (a valid index is kept)
+                output = await exec(`${condition('ED Enum')}
+sc.LeftVal(${id('ED Enum 5')});
+sc.RightVal1(2);
+sc.LeftVal(${id('ED Enum 3')});
+${fields}
+                `);
+                output.should.equal('5 4 2');
+            });
+
+            it('should reset the comparison and trigger of a condition when its kind is changed', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Kind',
+                    rules: [{
+                        conditions: [[{
+                            sysvar: 'ED Num', compare: '>=', value: 5, trigger: 'update'
+                        }]], destinations: [increment('ED Count')]
+                    }]
+                });
+                // (system variable -> key -> number system variable)
+                const output = await exec(`${condition('ED Kind')}
+sc.LeftValType(ivtObjectId);
+sc.LeftVal(${id('BidCos-RF.BidCoS-RF:44.PRESS_SHORT')});
+Write(sc.ConditionType() # " " # sc.ConditionType2() # "|");
+sc.LeftValType(ivtSystemId);
+sc.LeftVal(${id('ED Num')});
+Write(sc.ConditionType() # " " # sc.ConditionType2());
+                `);
+                output.should.equal('1 1|6 4');
+            });
+
+            it('should keep the valid fields of a condition', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Valid',
+                    rules: [{
+                        conditions: [[{
+                            sysvar: 'ED Num', compare: '>', value: 5, trigger: 'change'
+                        }]], destinations: [increment('ED Count')]
+                    }]
+                });
+                // (another number, the same system variable again, and a trigger set
+                // before the system variable after changing the kind)
+                const output = await exec(`${condition('ED Valid')}
+sc.ConditionType(9);
+sc.ConditionType2(15);
+sc.LeftVal(${id('ED Num 10')});
+Write(sc.ConditionType() # " " # sc.ConditionType2() # "|");
+sc.LeftVal(${id('ED Num 10')});
+Write(sc.ConditionType() # " " # sc.ConditionType2() # "|");
+sc.LeftValType(ivtObjectId);
+sc.LeftValType(ivtSystemId);
+sc.ConditionType2(13);
+sc.LeftVal(${id('ED Num')});
+Write(sc.ConditionType() # " " # sc.ConditionType2());
+                `);
+                output.should.equal('9 15|9 15|6 13');
+            });
+
+            it('should correct a value of a destination which is invalid for the new system variable', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Dest',
+                    rules: [{
+                        conditions: [[{
+                            sysvar: 'ED Num', compare: '>', value: 5, trigger: 'change'
+                        }]], destinations: [{sysvar: 'ED Enum 5', value: 4}]
+                    }]
+                });
+                const output = await exec(`${destination('ED Dest')}
+sd.DestinationDP(${id('ED Enum 3')});
+Write(sd.DestinationValue() # "|");
+sd.DestinationDP(${id('ED Enum 5')});
+sd.DestinationValue(1);
+sd.DestinationDP(${id('ED Enum 3')});
+Write(sd.DestinationValue() # "|");
+sd.DestinationDP(${id('ED Num')});
+sd.DestinationValue(20);
+sd.DestinationDP(${id('ED Num 10')});
+Write(sd.DestinationValue() # "|");
+sd.DestinationDP(${id('ED Num')});
+sd.DestinationValue(5);
+sd.DestinationDP(${id('ED Num 10')});
+Write(sd.DestinationValue());
+                `);
+                output.should.equal('0|1|0.000000|5.000000');
+            });
+
+            // (data points of devices have special values outside of their range)
+            it('should keep the value of a destination setting a data point of a device', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'ED Dest Device',
+                    rules: [{
+                        conditions: [[{
+                            sysvar: 'ED Num', compare: '>', value: 5, trigger: 'change'
+                        }]], destinations: [{datapoint: 'BidCos-RF.BidCoS-RF:1.LEVEL', value: 1.005}]
+                    }]
+                });
+                const output = await exec(`${destination('ED Dest Device')}
+sd.DestinationDP(${id('BidCos-RF.BidCoS-RF:2.LEVEL')});
+Write(sd.DestinationValue());
+                `);
+                output.should.equal('1.005000');
+            });
+        });
+
         describe('variables of other scripts', function () {
             // (warning added in ReGaHss R1.00.0388.0266)
             before(function () {
