@@ -246,6 +246,33 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 await simulator().interface('BidCos-RF').event('BidCoS-RF:40', 'PRESS_SHORT', true);
                 await until(() => value('PC Key'), '1.000000');
             });
+
+            // https://github.com/OpenCCU/OpenCCU/issues/4775: a condition of a
+            // key kept the trigger ("on change") and comparison of a data point
+            // selected before in the WebUI, so that the program was only
+            // executed at the first key press (or never)
+            it('should trigger on each key press whatever the trigger and comparison of the condition are', async function () {
+                // fixed in ReGaHss R1.00.0388.0270
+                requireRegaVersion(this, 'R1.00.0388.0270');
+                this.timeout(60_000);
+                await createSysvars({'PC Key Change': 'number', 'PC Key Range': 'number'});
+                await createProgram({
+                    name: 'PC Key Change',
+                    rules: [{conditions: [[{datapoint: 'BidCos-RF.BidCoS-RF:41.PRESS_SHORT', value: true, trigger: 'change'}]], destinations: [increment('PC Key Change')]}]
+                });
+                await createProgram({
+                    name: 'PC Key Range',
+                    rules: [{conditions: [[{datapoint: 'BidCos-RF.BidCoS-RF:42.PRESS_SHORT', value: true, trigger: 'change'}]], destinations: [increment('PC Key Range')]}]
+                });
+                // (a comparison of a number data point, "in the range of")
+                await exec('dom.GetObject("PC Key Range").Rule().RuleCondition(0).CndSingleCondition(0).ConditionType(6);');
+                for (const count of [1, 2, 3]) {
+                    await simulator().interface('BidCos-RF').event('BidCoS-RF:41', 'PRESS_SHORT', true);
+                    await simulator().interface('BidCos-RF').event('BidCoS-RF:42', 'PRESS_SHORT', true);
+                    await until(() => value('PC Key Change'), count.toFixed(6));
+                    await until(() => value('PC Key Range'), count.toFixed(6));
+                }
+            });
         });
 
         describe('destinations', function () {
