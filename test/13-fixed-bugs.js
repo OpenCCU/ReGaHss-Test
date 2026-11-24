@@ -1101,8 +1101,26 @@ Write("n=" # n);
             this.timeout(30_000);
             const response = await rega.request({path: '/pages/index.htm?sid=@abcdefghij@'});
             response.statusCode.should.equal(500);
-            response.text.should.containEql('<p>Sitzung ung\u00FCltig oder abgelaufen!\r\n<br><a href="/index.htm">Weiter</a></p>');
+            // (since R1.00.0388.0270 the message and the link carry the keys of
+            // their translations, see the next test)
+            response.text.should.match(/<p>(<span name="sessionInvalid">)?Sitzung ung\u00FCltig oder abgelaufen!\r\n(<\/span>)?<br><a href="\/index\.htm"( name="forward")?>Weiter<\/a><\/p>/);
             response.text.should.not.containEql('</p><p>');
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU-Base/pull/415: the error page
+        // for an invalid session is marked for the WebUI, which shows it
+        // styled (id "sessionInvalid") and in its language (the names are the
+        // keys of the translations), the texts, link and status are unchanged
+        it('should mark the error page for an invalid session for the WebUI', async function () {
+            // added in ReGaHss R1.00.0388.0270
+            requireRegaVersion(this, 'R1.00.0388.0270');
+            this.timeout(30_000);
+            const response = await rega.request({path: '/pages/index.htm?sid=@abcdefghij@'});
+            response.statusCode.should.equal(500);
+            response.text.should.containEql('<body><div id="sessionInvalid" role="alert"><p>'
+                + '<span name="sessionInvalid">Sitzung ung\u00FCltig oder abgelaufen!\r\n</span>'
+                + '<br><a href="/index.htm" name="forward">Weiter</a>'
+                + '</p></div></body>');
         });
 
         // see https://github.com/OpenCCU/OpenCCU/issues/2216
