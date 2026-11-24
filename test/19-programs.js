@@ -1132,6 +1132,81 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
             });
         });
 
+        // https://github.com/OpenCCU/OpenCCU/issues/4791: an inactive program
+        // with a time module triggered by a system variable of its conditions
+        // set the modified flag of the DOM at each trigger, so that the DOM was
+        // saved again and again; the activation of a program without a time
+        // module did not set it
+        describe('modified flag of the DOM', function () {
+            // fixed in ReGaHss R1.00.0388.0270
+            before(function () {
+                requireRegaVersion(this, 'R1.00.0388.0270');
+            });
+
+            const modified = () => exec('Write(dom.IsDOMModified());');
+            const saved = async () => {
+                await exec('system.Save();');
+                const output = await modified();
+                output.should.equal('false');
+            };
+
+            it('should not set the modified flag when an inactive program with a time module is triggered', async function () {
+                this.timeout(30_000);
+                await createSysvars({'MF Flag': 'bool', 'MF Count': 'number'});
+                const timer = await exec(timerScript({name: 'MF Timer Inactive', type: 'daily', time: '2007-01-01 07:30:00'}));
+                await createProgram({
+                    name: 'MF Inactive',
+                    active: false,
+                    rules: [{conditions: [[{timer: Number(timer), trigger: 'check'}, {sysvar: 'MF Flag', value: true, trigger: 'change'}]], destinations: [increment('MF Count')]}]
+                });
+                // (the time module created for the inactive program is enabled
+                // until the program is triggered the first time, which disables
+                // it: a modification of the time module)
+                await setAndSettle('MF Flag', true);
+                await setAndSettle('MF Flag', false);
+                await saved();
+                for (const flag of [true, false, true]) {
+                    await set('MF Flag', flag);
+                }
+
+                await sleep(1000);
+                const output = await modified();
+                output.should.equal('false');
+                const count = await value('MF Count');
+                count.should.equal('0.000000');
+            });
+
+            it('should set the modified flag when a program with a time module is deactivated', async function () {
+                this.timeout(30_000);
+                const timer = await exec(timerScript({name: 'MF Timer Active', type: 'daily', time: '2007-01-01 07:30:00'}));
+                await createProgram({
+                    name: 'MF Active',
+                    rules: [{conditions: [[{timer: Number(timer), trigger: 'check'}, {sysvar: 'MF Flag', value: true, trigger: 'change'}]], destinations: [increment('MF Count')]}]
+                });
+                await saved();
+                await exec('dom.GetObject("MF Active").Active(false);');
+                const output = await modified();
+                output.should.equal('true');
+            });
+
+            it('should set the modified flag when a program without a time module is activated or deactivated', async function () {
+                this.timeout(30_000);
+                await createProgram({
+                    name: 'MF Plain',
+                    rules: [{conditions: [[{sysvar: 'MF Flag', value: true, trigger: 'change'}]], destinations: [increment('MF Count')]}]
+                });
+                const results = [];
+                for (const active of [false, false, true, true]) {
+                    await saved();
+                    await exec(`dom.GetObject("MF Plain").Active(${active});`);
+                    results.push(await modified());
+                }
+
+                // (only a change of the active state is a modification)
+                results.should.deepEqual(['true', 'false', 'true', 'false']);
+            });
+        });
+
         // https://github.com/OpenCCU/OpenCCU/issues/4775: fields which are
         // invalid for the data point or system variable of a condition or
         // destination (e.g. left by editing a program in an earlier version)
