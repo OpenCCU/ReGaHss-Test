@@ -1162,8 +1162,8 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
                 // (the time module created for the inactive program is enabled
                 // until the program is triggered the first time, which disables
                 // it: a modification of the time module)
-                await set('MF Flag', true);
-                await set('MF Flag', false);
+                await setAndSettle('MF Flag', true);
+                await setAndSettle('MF Flag', false);
                 await saved();
                 for (const flag of [true, false, true]) {
                     await set('MF Flag', flag);
