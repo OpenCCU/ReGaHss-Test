@@ -244,6 +244,10 @@ The fuzzer immediately found an unbounded recursion in `libXmlRpc`: a `system.mu
 
 `test/23-script-cache.js` checks the caches of the script engine of ReGaHss: `Call()` of functions in `.fn` files together with `system.ClearCache()` and `system.CacheMode()`, `system.ClearCache()` called by cached code itself, and concurrent first requests of a page, which must all return the complete page ([OpenCCU/OpenCCU#2638](https://github.com/OpenCCU/OpenCCU/issues/2638), [OpenCCU/OpenCCU#1467](https://github.com/OpenCCU/OpenCCU/issues/1467)). The required `.fn`/`.htm` files (`test/fixtures/www/cache-test`) are served from a document root of their own (the WebUI files linked plus the fixtures, `ReGaInstance` option `httpDocPath`). The tests are skipped for ReGaHss versions before R1.00.0388.0264.
 
+### String encoding
+
+`test/25-string-encode.js` checks the string methods `HtmlEncode()`, `HtmlEncodeKeepEntities()` and `JsEncode()`, which replace the chains of `Replace()` calls the WebUI uses to escape texts for HTML and JavaScript ([OpenCCU/OpenCCU-Base#419](https://github.com/OpenCCU/OpenCCU-Base/pull/419)): the encoding of single strings (including the character references `HtmlEncodeKeepEntities()` keeps and the ones it does not accept), the encoding of all Latin-1 characters (decoding the HTML result, and evaluating the JavaScript result as string literal in single and double quotes, yields the string again), the equality with the `Replace()` chain of the WebUI, method calls on expressions and the 32 MiB limit of the resulting string. The tests are skipped for ReGaHss versions before R1.00.0388.0271.
+
 ## Continuous integration
 
 The [CI workflow](.github/workflows/ci.yml) runs on every push/pull request and nightly. It tests the ReGaHss binaries for `x86_64-linux-gnu`, `i686-linux-gnu`, `aarch64-linux-gnu` and `arm-linux-gnueabihf` (the ARM architectures with qemu) of
