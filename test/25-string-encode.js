@@ -216,7 +216,10 @@ WriteLine(i.ToString().HtmlEncode() # " " # "a<b".HtmlEncode().Length() # " " # 
                 const logged = regaInstance().waitFor(new RegExp(method + String.raw`\(\) exceeds the maximum string length of 33554432 characters`), {buffered: false, timeout: 30_000});
                 // (the longest string which is encoded to at most 32 MiB, and
                 // one more character, which exceeds the limit; built from
-                // blocks of 1 MiB)
+                // blocks of 1 MiB; the variables are cleared at the end, as
+                // the response of /rega.exe contains all variables, escaped
+                // for XML, which took minutes with AddressSanitizer for
+                // millions of characters to escape)
                 const fit = Math.floor((32 * 1024 * 1024) / factor);
                 const blocks = Math.ceil((fit + 1) / (1024 * 1024));
                 const {output} = await rega.exec(`
@@ -240,6 +243,9 @@ if (true) {
   Write(" not reached");
 }
 WriteLine(" " # r.Length());
+a = "";
+m = "";
+r = "";
                 `);
                 // (like for other runtime errors in an assignment, the
                 // variable is set to the string the method was called for)
