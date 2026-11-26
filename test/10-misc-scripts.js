@@ -4,6 +4,7 @@
 const {
     rega,
     regaLabel,
+    regaInstance,
     initTest,
     cleanupTest
 } = require('../lib/helper.js');
@@ -83,6 +84,22 @@ if (c_zeit < c_tagesbeginn - 2) {
                     done();
                 }
             });
+        });
+    });
+
+    describe('variables in the response of /rega.exe', function () {
+        // (the variables of the script are appended to the output as XML, their
+        // values with & < > " ' escaped as character references)
+        it('should escape the values of the variables for XML', async function () {
+            this.timeout(30_000);
+            const response = await regaInstance().client.request({
+                method: 'POST',
+                path: '/rega.exe',
+                body: 'string s = "a&b<c>d\\"e\'f"; string t = "&amp; &#176;"; string e = ""; integer i = 5; Write("out");'
+            });
+            response.statusCode.should.equal(200);
+            response.text.replace(/<httpUserAgent>[^<]*<\/httpUserAgent>/, '').should.equal('out<xml><exec>/rega.exe</exec><sessionId></sessionId>'
+                + '<s>a&amp;b&lt;c&gt;d&quot;e&apos;f</s><t>&amp;amp; &amp;#176;</t><e></e><i>5</i></xml>');
         });
     });
 
