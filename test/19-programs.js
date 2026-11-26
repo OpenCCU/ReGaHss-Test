@@ -19,7 +19,7 @@ const {
     regaInstance,
     waitForRega
 } = require('../lib/helper.js');
-const {timerScript} = require('../lib/program-builder.js');
+const {timerScript, compareTypes, triggers} = require('../lib/program-builder.js');
 const {
     sleep, exec, createSysvars, createProgram, set, value, until, increment
 } = require('../lib/script-helpers.js');
@@ -31,6 +31,35 @@ require('should');
 async function setAndSettle(name, newValue) {
     await set(name, newValue);
     await sleep(300);
+}
+
+// first ReGaHss version in which the first trigger of a condition "on change"
+// is not taken as a change of its result any more
+// (see https://github.com/OpenCCU/OpenCCU/issues/4800)
+const onChangeFixVersion = 'R1.00.0388.0272';
+
+// creates the number variable <name> with the given value and the program
+// "<name> Prg": if <name> is less than 10 (on change), then count in
+// "<name> Then", else in "<name> Else"
+async function createOnChangeProgram(name, initialValue) {
+    await createSysvars({[name]: 'number', [name + ' Then']: 'number', [name + ' Else']: 'number'});
+    await set(name, initialValue);
+    await createProgram({
+        name: name + ' Prg',
+        rules: [
+            {
+                conditions: [[{
+                    sysvar: name, compare: '<', value: 10, trigger: 'change'
+                }]], destinations: [increment(name + ' Then')]
+            },
+            {destinations: [increment(name + ' Else')]}
+        ]
+    });
+}
+
+// executions of the "then" and "else" activities of the program, e.g. '1 0'
+async function onChangeCounts(name) {
+    return Number(await value(name + ' Then')) + ' ' + Number(await value(name + ' Else'));
 }
 
 describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']', function () {
@@ -114,7 +143,7 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                         name: 'PC Trigger ' + trigger,
                         rules: [{
                             conditions: [[{
-                                sysvar: 'PC Trig ' + trigger, compare: '>=', value: 0, trigger
+                                sysvar: 'PC Trig ' + trigger, compare: '>=', value: 1, trigger
                             }]], destinations: [increment('PC Count ' + trigger)]
                         }]
                     });
@@ -133,7 +162,10 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
                 }
 
                 // ("on change" triggers when the result of the condition changes to
-                // true, not on every change of the value)
+                // true, not on every change of the value; the condition is not met
+                // by the initial value 0, as up to ReGaHss R1.00.0388.0271 the first
+                // trigger of a new program was taken as a change of the result, see
+                // 'conditions "on change" at the first trigger' below)
                 counts.should.deepEqual({change: '1.000000', update: '3.000000', check: '0.000000'});
             });
 
@@ -1207,6 +1239,108 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
             });
         });
 
+        // https://github.com/OpenCCU/OpenCCU/issues/4800: a condition "on
+        // change" only triggers the program if its result changes. As a
+        // program is not executed any more when it is activated or (without
+        // ExecuteOnStartup()) at the start of ReGaHss, its conditions did not
+        // know their result before the first trigger, which was taken as a
+        // change: e.g. a program "less than 10" was executed when its
+        // variable was changed from 8 to 9
+        describe('conditions "on change" at the first trigger', function () {
+            // fixed in ReGaHss R1.00.0388.0272
+            before(function () {
+                requireRegaVersion(this, onChangeFixVersion);
+            });
+
+            it('should not execute a new program if the result of its condition does not change', async function () {
+                this.timeout(30_000);
+                await createOnChangeProgram('FT New', 8);
+                await setAndSettle('FT New', 9);
+                await sleep(1000);
+                (await onChangeCounts('FT New')).should.equal('0 0');
+            });
+
+            it('should execute the new program when the result of its condition changes', async function () {
+                this.timeout(30_000);
+                await set('FT New', 12);
+                await until(() => onChangeCounts('FT New'), '0 1');
+                await set('FT New', 7);
+                await until(() => onChangeCounts('FT New'), '1 1');
+                await setAndSettle('FT New', 8);
+                await sleep(1000);
+                (await onChangeCounts('FT New')).should.equal('1 1');
+            });
+
+            it('should not execute the "else" activity of a new program if the result does not change', async function () {
+                this.timeout(30_000);
+                await createOnChangeProgram('FT Else', 12);
+                await setAndSettle('FT Else', 13);
+                await sleep(1000);
+                (await onChangeCounts('FT Else')).should.equal('0 0');
+                await set('FT Else', 7);
+                await until(() => onChangeCounts('FT Else'), '1 0');
+            });
+
+            // (the result of the condition before the program was deactivated
+            // is not compared with the one after its activation)
+            it('should not execute an activated program if the result of its condition does not change', async function () {
+                this.timeout(30_000);
+                await createOnChangeProgram('FT Act', 12);
+                await exec('dom.GetObject("FT Act Prg").Active(false);');
+                await setAndSettle('FT Act', 7);
+                await exec('dom.GetObject("FT Act Prg").Active(true);');
+                await setAndSettle('FT Act', 8);
+                await sleep(1000);
+                (await onChangeCounts('FT Act')).should.equal('0 0');
+                await set('FT Act', 12);
+                await until(() => onChangeCounts('FT Act'), '0 1');
+            });
+
+            // (a program is edited in the WebUI as a copy, which is copied back
+            // when it is saved, see RestoreProgram() in /www/rega/esp/programs.fn)
+            it('should not execute a program with a condition added to it if the result does not change', async function () {
+                this.timeout(30_000);
+                await createOnChangeProgram('FT Edit', 8);
+                const output = await exec(`
+object oOrig = dom.GetObject("FT Edit Prg");
+object oCopy = oOrig.ProgramCopyTo();
+oCopy.ProgramCopyID(oOrig.ID());
+object sc = oCopy.Rule().RuleCondition(0).CndAddSingle();
+sc.OperatorType(2);
+sc.LeftValType(ivtSystemId);
+sc.LeftVal(dom.GetObject("FT Edit").ID());
+sc.ConditionType(${compareTypes['<']});
+sc.RightVal1ValType(ivtFloat);
+sc.RightVal1(5);
+sc.ConditionType2(${triggers.change});
+boolean isActive = oOrig.Active();
+oCopy.ProgramCopyTo(oOrig.ID());
+dom.DeleteObject(oCopy.ID());
+oOrig.ProgramCopyID(ID_ERROR);
+oOrig.ProgramUpdate();
+oOrig.Active(isActive);
+Write(oOrig.Rule().RuleCondition(0).CndSingleCount());
+                `);
+                output.should.equal('2');
+                await setAndSettle('FT Edit', 9);
+                await sleep(1000);
+                (await onChangeCounts('FT Edit')).should.equal('0 0');
+                await set('FT Edit', 12);
+                await until(() => onChangeCounts('FT Edit'), '0 1');
+            });
+
+            it('should create the programs to be checked after a restart', async function () {
+                this.timeout(30_000);
+                await createOnChangeProgram('FR Low', 8);
+                await createOnChangeProgram('FR High', 12);
+                const output = await exec(`
+Write(dom.GetObject("FR Low Prg").ExecuteOnStartup() # " " # dom.GetObject("FR High Prg").ExecuteOnStartup());
+system.Save();
+                `);
+                output.should.equal('false false');
+            });
+        });
+
         // https://github.com/OpenCCU/OpenCCU/issues/4775: fields which are
         // invalid for the data point or system variable of a condition or
         // destination (e.g. left by editing a program in an earlier version)
@@ -1288,6 +1422,46 @@ system.Save();
                 this.timeout(30_000);
                 await set('ES Trigger', true);
                 await until(() => value('ES Count Off'), '1.000000');
+            });
+        });
+
+        // see https://github.com/OpenCCU/OpenCCU/issues/4800
+        describe('conditions "on change" at the first trigger after a restart', function () {
+            // fixed in ReGaHss R1.00.0388.0272
+            before(function () {
+                requireRegaVersion(this, onChangeFixVersion);
+            });
+
+            it('should not execute a program if its variable is updated with the same value', async function () {
+                this.timeout(30_000);
+                await setAndSettle('FR Low', 8);
+                await sleep(1000);
+                (await onChangeCounts('FR Low')).should.equal('0 0');
+            });
+
+            it('should not execute the program if the result of its condition does not change', async function () {
+                this.timeout(30_000);
+                await setAndSettle('FR Low', 9);
+                await sleep(1000);
+                (await onChangeCounts('FR Low')).should.equal('0 0');
+            });
+
+            it('should execute the program when the result of its condition changes', async function () {
+                this.timeout(30_000);
+                await set('FR Low', 12);
+                await until(() => onChangeCounts('FR Low'), '0 1');
+                await set('FR Low', 7);
+                await until(() => onChangeCounts('FR Low'), '1 1');
+            });
+
+            it('should not execute the "else" activity of a program if the result does not change', async function () {
+                this.timeout(30_000);
+                await setAndSettle('FR High', 12);
+                await setAndSettle('FR High', 13);
+                await sleep(1000);
+                (await onChangeCounts('FR High')).should.equal('0 0');
+                await set('FR High', 7);
+                await until(() => onChangeCounts('FR High'), '1 0');
             });
         });
 
