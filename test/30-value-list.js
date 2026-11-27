@@ -169,7 +169,7 @@ describe('Running ' + __filename.split('/').reverse()[0] + ' [' + regaLabel + ']
 
         it('should take the index from an expression', async function () {
             this.timeout(30_000);
-            (await exec(`object sv = ${sysvar('VL Mode')}; integer i = 1; Write(sv.ValueName(i + 1) # "|" # sv.ValueName("1") # "|" # sv.ValueName(sv.Value()));`)).should.equal('Urlaub|An|An');
+            (await exec(`object sv = ${sysvar('VL Mode')}; sv.State(1); integer i = 1; Write(sv.ValueName(i + 1) # "|" # sv.ValueName("1") # "|" # sv.ValueName(sv.Value()));`)).should.equal('Urlaub|An|An');
         });
     });
 
@@ -235,8 +235,9 @@ foreach (n, "0\\t1\\t2") { Write((sv.ValueIndex(sv.ValueName(n)) == n) # ";"); }
 
         it('should take a number as index as before', async function () {
             this.timeout(30_000);
-            // (also a text of a number, even if it is an entry of the value list)
-            (await exec(`object sv = ${sysvar('VL Numbers')}; sv.State(0); Write(sv.State("2") # "|" # sv.Value() # "|"); Write(sv.State(1) # "|" # sv.Value() # "|"); Write(sv.State(" 3 ") # "|" # sv.Value() # "|" # sv.ValueName());`)).should.equal('true|2|true|1|true|3|x y');
+            // (also a text of a number, even if it is an entry of the value list:
+            // "10" is the index 10, not the entry "10" with the index 1)
+            (await exec(`object sv = ${sysvar('VL Numbers')}; sv.State(0); Write(sv.State("2") # "|" # sv.Value() # "|"); Write(sv.State(1) # "|" # sv.Value() # "|"); Write(sv.State(" 3 ") # "|" # sv.Value() # "|" # sv.ValueName() # "|"); Write(sv.State("10") # "|" # sv.Value()); sv.State(0);`)).should.equal('true|2|true|1|true|3|x y|true|10');
         });
 
         it('should set the entry of a text with blank or special characters', async function () {
