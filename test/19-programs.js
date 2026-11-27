@@ -33,6 +33,32 @@ async function setAndSettle(name, newValue) {
     await sleep(300);
 }
 
+// sets a variable and waits until its value event has been processed: the
+// value events are processed asynchronously and in order by ReGaHss, so that
+// a program created or activated right after setting the variable could
+// still be triggered by its event (under load), e.g. a program "if the
+// variable is true, on update" executed once more than expected. The marker
+// variable set after it shows when the event was processed: its program
+// counts in "Settle Count" when it is triggered.
+async function setAndProcess(name, newValue) {
+    if (await exec('object o = dom.GetObject("Settle Prg"); if (o) { Write("ok"); }') !== 'ok') {
+        await createSysvars({'Settle Marker': 'bool', 'Settle Count': 'number'});
+        await createProgram({
+            name: 'Settle Prg',
+            rules: [{conditions: [[{sysvar: 'Settle Marker', value: true, trigger: 'update'}]], destinations: [increment('Settle Count')]}]
+        });
+    }
+
+    const count = Number(await value('Settle Count'));
+    await set(name, newValue);
+    await set('Settle Marker', true);
+    const deadline = Date.now() + 30_000;
+    while (Number(await value('Settle Count')) <= count) {
+        Date.now().should.be.below(deadline, 'value event of ' + name + ' not processed');
+        await sleep(20);
+    }
+}
+
 // first ReGaHss version in which the first trigger of a condition "on change"
 // is not taken as a change of its result any more
 // (see https://github.com/OpenCCU/OpenCCU/issues/4800)
@@ -1051,7 +1077,7 @@ dom.DeleteObject(tm.ID());
             it('should not execute a new program when it is activated', async function () {
                 this.timeout(30_000);
                 await createSysvars({'EA Flag': 'bool', 'EA Count New': 'number', 'EA Count On': 'number'});
-                await set('EA Flag', true);
+                await setAndProcess('EA Flag', true);
                 await createProgram({
                     name: 'EA New',
                     active: false,
@@ -1136,7 +1162,7 @@ Write(dom.GetObject("ES On").ExecuteOnStartup() # " " # dom.GetObject("ES Off").
             it('should evaluate a program and execute it with State(true)', async function () {
                 this.timeout(30_000);
                 await createSysvars({'ST Flag': 'bool', 'ST Count': 'number'});
-                await set('ST Flag', true);
+                await setAndProcess('ST Flag', true);
                 await createProgram({
                     name: 'ST Prg',
                     rules: [{conditions: [[{sysvar: 'ST Flag', value: true, trigger: 'update'}]], destinations: [increment('ST Count')]}]
