@@ -176,7 +176,9 @@ sv.State(0);
 dom.RTUpdate(0);
 `);
             // (a daily time module 30 seconds from now, moved by -10 to +10 seconds)
-            const timer = await createTimer('TR Daily', {type: 'daily', time: await timeFromNow(30)}, 10);
+            const nominal = Number(await exec('Write(system.Date("%F %T").ToTime().ToInteger() + 30);'));
+            const time = await exec(`time t = (${nominal}).ToTime(); Write("2007-01-01 " # t.Format("%H:%M:%S"));`);
+            const timer = await createTimer('TR Daily', {type: 'daily', time}, 10);
             const id = await exec(programScript({
                 name: 'TR Program',
                 rules: [{
@@ -199,7 +201,12 @@ dom.RTUpdate(0);
             executed.should.not.equal('', 'program not executed');
             // (its destination script may only run in the next second on a slow system)
             (Number(executed) - expected).should.be.within(0, 2, `executed at ${executed} instead of ${expected}`);
-            await sleep(3000);
+            // (executed once: also not again at its regular time, so wait until
+            // after the latest possible trigger time and the execution tolerance)
+            while (Number(await exec('Write(system.Date("%F %T").ToTime().ToInteger());')) < nominal + 10 + 2) {
+                await sleep(500);
+            }
+
             (await exec('Write(dom.GetObject("TR Count").Value());')).should.equal('1.000000');
         });
     });
