@@ -69,7 +69,8 @@ const onChangeFixVersion = 'R1.00.0388.0272';
 // "<name> Then", else in "<name> Else"
 async function createOnChangeProgram(name, initialValue) {
     await createSysvars({[name]: 'number', [name + ' Then']: 'number', [name + ' Else']: 'number'});
-    await set(name, initialValue);
+    // (waits for the value event, which could otherwise trigger the new program)
+    await setAndProcess(name, initialValue);
     await createProgram({
         name: name + ' Prg',
         rules: [
